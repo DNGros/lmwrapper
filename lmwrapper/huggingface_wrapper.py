@@ -3,18 +3,20 @@ from functools import cached_property
 from pathlib import Path
 from typing import Union, List, Any
 
-from torch import device
 from lmwrapper.abstract_predictor import LmPredictor
 from lmwrapper.structs import LmPrompt, LmPrediction
 from packaging import version
 from importlib.metadata import version as import_version
 from enum import Enum
+import numpy as np
 
 
 try:
     import torch
 
     assert version.parse(torch.__version__) >= version.parse("2.0")
+    from torch import device
+
 except ImportError:
     raise ImportError(
         "Expect to work on torch. Please see https://pytorch.org/ for install" " info"
@@ -58,6 +60,7 @@ try:
         set_seed,
         T5ForConditionalGeneration,
         AutoModelForSeq2SeqLM,
+        PretrainedConfig
     )
 
     set_seed(42)
@@ -209,16 +212,16 @@ class HuggingfacePredictor(LmPredictor):
         #   require calling the model again https://discuss.huggingface.co/t/announcement-generation-get-probabilities-for-generated-output/30075/17
         # Instead we are going to patch the model forward to log calls
 
-        # old_forward = self._model.forward
-        # cached_logits = []
+        old_forward = self._model.forward
+        cached_logits = []
 
-        # def new_call(*args, **kwargs):
-        #     nonlocal cached_logits
-        #     val = old_forward(*args, **kwargs)
-        #     cached_logits.append(val.logits)
-        #     return val
+        def new_call(*args, **kwargs):
+            nonlocal cached_logits
+            val = old_forward(*args, **kwargs)
+            cached_logits.append(val.logits)
+            return val
 
-        # self._model.forward = new_call
+        self._model.forward = new_call
 
         with torch.no_grad():
             generation_output = self._model.generate(
@@ -226,7 +229,7 @@ class HuggingfacePredictor(LmPredictor):
                 generation_config=gen_config,
             )
 
-        # self._model.forward = old_forward
+        self._model.forward = old_forward
 
         s = generation_output.sequences[0]
         text = self._tokenizer.decode(
@@ -245,14 +248,36 @@ class HuggingfacePredictor(LmPredictor):
         # Calculate the logprobs if needed
         if need_log_prob:
             logprobs = None #generation_output.sequences_scores.item()
-            # all_logits = torch.cat(cached_logits, dim=1)
-            # assert all_logits.shape[0] == 1  # batch
-            # assert all_logits.shape[1] == len(tokens)
-            # logprobs = _gather_logprobs_from_logits(
-            #     all_logits[0],
-            #     s[1:],
-            # )
-            # assert len(logprobs) == len(tokens)
+            transition_scores = self._model.compute_transition_scores(
+    generation_output.sequences, generation_output.scores, normalize_logits=True,
+            )
+            print(generation_output.scores)
+
+            input_length = 1 if self._model.config.is_encoder_decoder else encoded_input.input_ids.shape[1]
+            generated_tokens = generation_output.sequences[:, input_length:]
+            for tok, score in zip(generated_tokens[0], transition_scores[0]):
+                # | token | token string | logits | probability
+                print(f"| {tok:5d} | {self._tokenizer.decode(tok):8s} | {score.numpy():.4f} | {np.exp(score.numpy()):.2%}")
+            all_logits = torch.cat(cached_logits, dim=1)
+            assert all_logits.shape[0] == 1  # batch
+            assert all_logits.shape[1] == len(tokens)
+            logprobs = _gather_logprobs_from_logits(
+                all_logits[0],
+                s[1:],
+            )
+            assert len(logprobs) == len(tokens)
+            print("Clean logprobs")
+            for tok, score in zip(generated_tokens[0], logprobs ):
+                # | token | token string | logits | probability
+                print(f"| {tok:5d} | {self._tokenizer.decode(tok):8s} | {score.numpy():.4f} | {np.exp(score.numpy()):.2%}")
+
+            output_length = input_length + np.sum(transition_scores.numpy() < 0, axis=1)
+            length_penalty = self._model.generation_config.length_penalty
+            reconstructed_scores = transition_scores.sum(axis=1) / (output_length**length_penalty)
+            print("reconstructed_scores logprobs")
+            for tok, score in zip(generated_tokens[0], reconstructed_scores ):
+                # | token | token string | logits | probability
+                print(f"| {tok:5d} | {self._tokenizer.decode(tok):8s} | {score.numpy():.4f} | {np.exp(score.numpy()):.2%}")
         else:
             logprobs = None
 
@@ -314,9 +339,17 @@ def get_huggingface_lm(
     model: str,
     runtime: Runtime = Runtime.PYTORCH,
     precision: torch.dtype = torch.float32,
+    trust_remote_code: bool = True
 ) -> HuggingfacePredictor:
     _kwargs = {"trust_remote_code": True}
     model_class = AutoModelForCausalLM
+    config_dict = PretrainedConfig.get_config_dict(model)
+    has_remote_code = "auto_map" in config_dict and "AutoConfig" in config_dict["auto_map"]
+    if not trust_remote_code and has_remote_code:
+        raise Exception("The model provided has remote code and likely will not work as expected. Please call with `trust_remote_code = True`"
+                        " If you have read and trust the code.")
+    if "auto_map" in config_dict and "AutoModelForSeq2SeqLM" in config_dict["auto_map"]:
+        model_class = AutoModelForSeq2SeqLM
     if model.startswith("Salesforce/codegen"):
         if runtime == Runtime.BETTER_TRANSFORMER:
             raise Exception(
@@ -326,7 +359,7 @@ def get_huggingface_lm(
             _kwargs = {
                 "trust_remote_code": True,
                 "revision": "main",
-                "device_map": "auto",
+                "use_cache": False
             }
     elif model.startswith("Salesforce/codet5") and not model.endswith("b"):
         model_class = T5ForConditionalGeneration
@@ -335,7 +368,6 @@ def get_huggingface_lm(
         _kwargs = {
             "trust_remote_code": True,
             "low_cpu_mem_usage": True,
-            "device_map": "auto",
         }
         precision = torch.float16
 
@@ -481,6 +513,13 @@ def warmup_model(
     # model.to(device)
     for i in range(3):
         output = model.generate(**encoded_input, generation_config=generation_config)
+        tokenizer.decode(
+            output[0],
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=True,
+        )
+    for i in range(3):
+        output = model.generate(**encoded_input_long, generation_config=generation_config)
         tokenizer.decode(
             output[0],
             skip_special_tokens=True,

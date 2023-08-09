@@ -78,7 +78,7 @@ def test_gpt2_predict(runtime):
 @pytest.mark.parametrize("runtime", [Runtime.PYTORCH ])
 def test_codegen2_predict(runtime):
     lm = "Salesforce/codegen2-1B"
-    prompt = LmPrompt("print('Hello world", max_tokens=1, cache=False, temperature=0)
+    prompt = LmPrompt("print('Hello world", max_tokens=1, logprobs=1, cache=False, temperature=0)
     lm1 = get_huggingface_lm(lm, runtime=runtime)
     out1 = lm1.predict(prompt)
     assert out1.completion_text == "!"
@@ -112,9 +112,9 @@ def test_get_onnx_codet5p(lm):
     assert out1.completion_text == "args(user):"
 
 
-# @pytest.mark.parametrize("lm", CAUSAL_MODELS)
-# @pytest.mark.skipif(
-#     CUDA_UNAVAILABLE, reason="Cannot test ORT/ONNX CUDA runtime without CUDA"
-# )
-# def test_get_tensorrt(lm: str):
-#     get_huggingface_lm(lm, runtime=Runtime.TENSORRT)
+@pytest.mark.parametrize("lm", CAUSAL_MODELS)
+@pytest.mark.skipif(
+    CUDA_UNAVAILABLE, reason="Cannot test ORT/ONNX CUDA runtime without CUDA"
+)
+def test_get_tensorrt(lm: str):
+    get_huggingface_lm(lm, runtime=Runtime.TENSORRT)
