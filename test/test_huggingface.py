@@ -10,14 +10,43 @@ SMALL_GPU = CUDA_UNAVAILABLE or torch.cuda.mem_get_info()[0] < 17179869184  # 16
 
 if SMALL_GPU:
     ALL_MODELS = ["distilgpt2", "gpt2", "Salesforce/codet5p-220m", "Salesforce/codegen2-1B"]
+    CAUSAL_MODELS = ["distilgpt2", "gpt2", "Salesforce/codegen2-1B"]
 else:
     ALL_MODELS = ["distilgpt2", "gpt2", "Salesforce/codet5p-6b", "Salesforce/codegen2-3_7B"]
+    CAUSAL_MODELS = ["distilgpt2", "gpt2", "Salesforce/codegen2-3_7B"]
+
+@pytest.mark.skipif(
+    CUDA_UNAVAILABLE, reason="Cannot test ORT/ONNX CUDA runtime without CUDA"
+)
+def test_onnx_works():
+    from optimum.onnxruntime import ORTModelForSequenceClassification
+    from transformers import AutoTokenizer
+
+    ort_model = ORTModelForSequenceClassification.from_pretrained(
+      "philschmid/tiny-bert-sst2-distilled",
+      export=True,
+      provider="CUDAExecutionProvider",
+    )
+
+    tokenizer = AutoTokenizer.from_pretrained("philschmid/tiny-bert-sst2-distilled")
+    inputs = tokenizer("expectations were low, actual enjoyment was high", return_tensors="pt", padding=True)
+    outputs = ort_model(**inputs)
+    assert outputs
+    assert ort_model.providers == ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    from optimum.pipelines import pipeline
+
+    tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
+
+    pipe = pipeline(task="text-classification", model=ort_model, tokenizer=tokenizer, device="cuda:0")
+    result = pipe("Both the music and visual were astounding, not to mention the actors performance.")
+    assert result[0]["label"] == "POSITIVE"
+
 @pytest.mark.parametrize("lm", ALL_MODELS)
 def test_get_pytorch(lm):
     get_huggingface_lm(lm, runtime=Runtime.PYTORCH)
 
 
-@pytest.mark.parametrize("lm", ALL_MODELS)
+@pytest.mark.parametrize("lm", CAUSAL_MODELS)
 def test_get_ort_cpu(lm):
     get_huggingface_lm(lm, runtime=Runtime.ORT_CPU)
 
@@ -44,7 +73,7 @@ def test_codegen2_predict_bt(lm):
         assert str(e_info.value).startswith("WARNING BetterTransformer")
 
 
-@pytest.mark.parametrize("lm", ALL_MODELS)
+@pytest.mark.parametrize("lm", CAUSAL_MODELS)
 @pytest.mark.skipif(
     CUDA_UNAVAILABLE, reason="Cannot test ORT/ONNX CUDA runtime without CUDA"
 )
@@ -52,7 +81,7 @@ def test_get_onnx(lm):
     get_huggingface_lm(lm, runtime=Runtime.ONNX)
 
 
-@pytest.mark.parametrize("lm", ALL_MODELS)
+@pytest.mark.parametrize("lm", CAUSAL_MODELS)
 @pytest.mark.skipif(
     CUDA_UNAVAILABLE, reason="Cannot test ORT/ONNX CUDA runtime without CUDA"
 )
