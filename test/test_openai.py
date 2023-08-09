@@ -5,9 +5,12 @@ import pytest
 
 from lmwrapper.caching import clear_cache_dir
 from lmwrapper.openai_wrapper import get_open_ai_lm, OpenAiModelNames
+from lmwrapper.secret_manage import SecretEnvVar, SecretFile
 from lmwrapper.structs import LmPrompt, LmChatDialog
 
+SKIP_OPENAI = not SecretEnvVar("OPENAI_API_KEY").is_readable()
 
+@pytest.mark.skipif(SKIP_OPENAI, reason="No OpenAI key available.")
 def play_with_probs():
     lm = get_open_ai_lm()
     out = lm.predict(
@@ -27,7 +30,7 @@ def play_with_probs():
     print(out.prompt_tokens)
 
 
-
+@pytest.mark.skipif(SKIP_OPENAI, reason="No OpenAI key available.")
 def test_too_large_logprob():
     """Expect a warning to be thrown when logprobs is greater than 5 (which
     is the limit the openai api supports)"""
@@ -58,7 +61,7 @@ def test_too_large_logprob():
 
 
 
-
+@pytest.mark.skipif(SKIP_OPENAI, reason="No OpenAI key available.")
 def test_simple_chat_mode():
     lm = get_open_ai_lm(OpenAiModelNames.gpt_3_5_turbo)
     out = lm.predict(LmPrompt(
@@ -70,6 +73,7 @@ def test_simple_chat_mode():
     assert out.completion_text.strip() == "4"
 
 
+@pytest.mark.skipif(SKIP_OPENAI, reason="No OpenAI key available.")
 def test_simple_chat_mode_multiturn():
     lm = get_open_ai_lm(OpenAiModelNames.gpt_3_5_turbo)
     prompt = [
@@ -119,7 +123,7 @@ def main():
         ))
     print(text.completion_text)
 
-
+@pytest.mark.skipif(SKIP_OPENAI, reason="No OpenAI key available.")
 def test_tokenizer_gpt3():
     lm = get_open_ai_lm(
         OpenAiModelNames.text_ada_001
@@ -140,7 +144,7 @@ def test_tokenizer_gpt3():
         " ".join(["once"] * 2000), max_tokens=50
     ))
 
-
+@pytest.mark.skipif(SKIP_OPENAI, reason="No OpenAI key available.")
 def test_tokenizer_chat():
     lm = get_open_ai_lm(
         OpenAiModelNames.gpt_3_5_turbo

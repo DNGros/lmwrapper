@@ -23,7 +23,7 @@ class SecretInterface:
 class SecretFile(SecretInterface):
     def __init__(self, path: Path):
         if not path.exists():
-            raise FileNotFoundError(f"Secret file {path} not found")
+            print(f"Secret file {path} not found")
         self.path = path
 
     def is_readable(self) -> bool:

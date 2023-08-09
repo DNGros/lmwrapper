@@ -1,14 +1,17 @@
 from lmwrapper.huggingface_wrapper import get_huggingface_lm
 from lmwrapper.openai_wrapper import get_open_ai_lm
 import pytest
+from lmwrapper.secret_manage import SecretEnvVar
 
 from lmwrapper.structs import LmPrompt
 import math
+SKIP_OPENAI = not SecretEnvVar("OPENAI_API_KEY").is_readable()
 
 ALL_MODELS = [
-    get_open_ai_lm(),
     get_huggingface_lm('gpt2'),
 ]
+if not SKIP_OPENAI:
+    ALL_MODELS += [get_open_ai_lm()]
 
 
 @pytest.mark.parametrize("lm", ALL_MODELS)

@@ -20,9 +20,6 @@ except ImportError:
     )
 
 try:
-    import transformers
-
-    assert version.parse(transformers.__version__) >= version.parse("4.31.0")
     import bitsandbytes
 
     assert version.parse(import_version("bitsandbytes")) >= version.parse("0.41.1")
@@ -42,6 +39,13 @@ try:
         load_in_4bit=True,
         bnb_4bit_use_double_quant=True,
     )
+except ImportError:
+    print("8/bit quantization is disabled as bitsandbytes could not be loaded.")
+
+try:
+    import transformers
+
+    assert version.parse(transformers.__version__) >= version.parse("4.31.0")
 
     from transformers import (
         GenerationConfig,
