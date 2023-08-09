@@ -412,7 +412,6 @@ def initialize_hf_model(
                 provider="TensorrtExecutionProvider",
                 provider_options=provider_options,
                 session_options=session_options,
-                torch_dtype=precision,
                 **_kwargs,
             )
             assert "TensorrtExecutionProvider" in model.providers

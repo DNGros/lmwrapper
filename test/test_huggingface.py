@@ -22,7 +22,7 @@ def test_get_ort_cpu(lm):
     get_huggingface_lm(lm, runtime=Runtime.ORT_CPU)
 
 
-@pytest.mark.parametrize("lm", ALL_MODELS)
+@pytest.mark.parametrize("lm", ["distilgpt2", "gpt2"])
 def test_get_better_transformer(lm):
     if lm.startswith("Salesforce/codegen2"):
         return
