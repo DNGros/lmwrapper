@@ -33,7 +33,7 @@ def test_onnx_works():
     assert outputs
     assert ort_model.providers == ["CUDAExecutionProvider", "CPUExecutionProvider"]
 
-    pipe = pipeline(task="text-classification", model=ort_model, tokenizer=tokenizer, device="cuda:0")
+    pipe = pipeline(task="text-classification", model=ort_model, tokenizer=tokenizer)
     result = pipe("Both the music and visual were astounding, not to mention the actors performance.")
     assert result[0]["label"] == "POSITIVE"
 
