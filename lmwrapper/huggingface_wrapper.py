@@ -18,7 +18,7 @@ except ImportError:
     raise ImportError(
         "Expect to work on torch. Please see https://pytorch.org/ for install" " info"
     )
-
+quant_config = None
 try:
     import bitsandbytes
 
