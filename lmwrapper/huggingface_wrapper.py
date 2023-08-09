@@ -40,7 +40,7 @@ try:
         bnb_4bit_use_double_quant=True,
     )
 except ImportError:
-    print("8/bit quantization is disabled as bitsandbytes could not be loaded.")
+    print("8/4bit quantization is disabled as bitsandbytes could not be loaded.")
 
 try:
     import transformers
@@ -56,6 +56,7 @@ try:
         PreTrainedTokenizerFast,
         set_seed,
         T5ForConditionalGeneration,
+        AutoModelForSeq2SeqLM
     )
 
     set_seed(42)
@@ -323,6 +324,11 @@ def get_huggingface_lm(
                 _kwargs = {"trust_remote_code": True, "revision": "main"}
         case s if s.startswith("Salesforce/codet5"):
             model_class = T5ForConditionalGeneration
+        case s if s.startswith("Salesforce/codet5p-") and s.endswith("b"):
+            model_class = AutoModelForSeq2SeqLM
+            _kwargs = {"trust_remote_code": True, "low_cpu_mem_usage": True}
+            precision = torch.float16
+
 
     return initialize_hf_model(
         model, model_class, runtime=runtime, precision=precision, _kwargs=_kwargs
@@ -370,6 +376,7 @@ def initialize_hf_model(
                 provider="CPUExecutionProvider",
                 provider_options=provider_options,
                 session_options=session_options,
+                torch_dtype=precision,
                 **_kwargs,
             )
             assert "CPUExecutionProvider" in model.providers
@@ -390,6 +397,7 @@ def initialize_hf_model(
                 provider="CUDAExecutionProvider",
                 provider_options=provider_options,
                 session_options=session_options,
+                torch_dtype=precision,
                 **_kwargs,
             )
             assert "CUDAExecutionProvider" in model.providers
@@ -408,6 +416,7 @@ def initialize_hf_model(
                 provider="TensorrtExecutionProvider",
                 provider_options=provider_options,
                 session_options=session_options,
+                torch_dtype=precision,
                 **_kwargs,
             )
             assert "TensorrtExecutionProvider" in model.providers
@@ -415,7 +424,7 @@ def initialize_hf_model(
         case Runtime.BETTER_TRANSFORMER:
             tokenizer = AutoTokenizer.from_pretrained(model_name)
             model = BetterTransformer.transform(
-                model_class.from_pretrained(model_name, **_kwargs)
+                model_class.from_pretrained(model_name, torch_dtype=precision, **_kwargs)
             )
             warmup_model(model, tokenizer, device=torch_device)
 
