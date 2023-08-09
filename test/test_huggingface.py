@@ -89,7 +89,7 @@ def test_codegen2_predict_bt(lm):
     CUDA_UNAVAILABLE, reason="Cannot test ORT/ONNX CUDA runtime without CUDA"
 )
 def test_get_onnx(lm):
-    prompt = LmPrompt("print('Hello world", max_tokens=1, cache=False, temperature=0)
+    prompt = LmPrompt("def greet(user): print(f'hello <extra_id_0>!')", max_tokens=5, cache=False, temperature=0)
     lm1 = get_huggingface_lm(lm, runtime=Runtime.ONNX)
     out1 = lm1.predict(prompt)
     assert out1.completion_text == "!'"
