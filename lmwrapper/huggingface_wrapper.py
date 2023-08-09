@@ -320,12 +320,12 @@ def get_huggingface_lm(
                 "WARNING BetterTransformer breaks CodeGen models with AutoClass. Please use a different model or runtime."
             )
         else:
-            _kwargs = {"trust_remote_code": True, "revision": "main"}
+            _kwargs = {"trust_remote_code": True, "revision": "main", "device_map": "auto"}
     elif model.startswith("Salesforce/codet5") and not model.endswith("b"):
         model_class = T5ForConditionalGeneration
     elif model.startswith("Salesforce/codet5p-") and model.endswith("b"):
         model_class = AutoModelForSeq2SeqLM
-        _kwargs = {"trust_remote_code": True, "low_cpu_mem_usage": True}
+        _kwargs = {"trust_remote_code": True, "low_cpu_mem_usage": True, "device_map": "auto"}
         precision = torch.float16
 
     return initialize_hf_model(
