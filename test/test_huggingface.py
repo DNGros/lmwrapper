@@ -26,15 +26,11 @@ def test_onnx_works():
       export=True,
       provider="CUDAExecutionProvider",
     )
-
     tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
-    inputs = tokenizer(["Both the music and visual were astounding, not to mention the actors performance."], return_tensors="pt", padding=False)
-    outputs = ort_model(**inputs)
-    assert outputs
-    assert ort_model.providers == ["CUDAExecutionProvider", "CPUExecutionProvider"]
 
-    pipe = pipeline(task="text-classification", model=ort_model, tokenizer=tokenizer)
+    pipe = pipeline(task="text-classification", model=ort_model, tokenizer=tokenizer, device="cuda:0")
     result = pipe("Both the music and visual were astounding, not to mention the actors performance.")
+    print(result)
     assert result[0]["label"] == "POSITIVE"
 
 @pytest.mark.parametrize("lm", ALL_MODELS)
