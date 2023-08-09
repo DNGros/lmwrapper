@@ -88,7 +88,7 @@ def test_codegen2_predict_bt(lm):
 @pytest.mark.skipif(
     CUDA_UNAVAILABLE, reason="Cannot test ORT/ONNX CUDA runtime without CUDA"
 )
-def test_get_onnx(lm):
+def test_get_onnx_codegen(lm):
     prompt = LmPrompt("def greet(user): print(f'hello <extra_id_0>!')", max_tokens=5, cache=False, temperature=0)
     lm1 = get_huggingface_lm(lm, runtime=Runtime.ONNX)
     out1 = lm1.predict(prompt)
@@ -98,7 +98,7 @@ def test_get_onnx(lm):
 @pytest.mark.skipif(
     CUDA_UNAVAILABLE, reason="Cannot test ORT/ONNX CUDA runtime without CUDA"
 )
-def test_get_onnx(lm):
+def test_get_onnx_codet5p(lm):
     prompt = LmPrompt("def greet(user): print(f'hello <extra_id_0>!')", max_tokens=20, cache=False, temperature=0)
     lm1 = get_huggingface_lm(lm, runtime=Runtime.ONNX)
     out1 = lm1.predict(prompt)
