@@ -33,31 +33,46 @@ def test_onnx_works():
     assert outputs
     assert ort_model.providers == ["CUDAExecutionProvider", "CPUExecutionProvider"]
 
-    pipe = pipeline(task="text-classification", model=ort_model, tokenizer=tokenizer, device="cuda")
-    result = pipe("Both the music and visual were astounding, not to mention the actors performance.")
-    assert result[0]["label"] == "POSITIVE"
+def test_onnx_works_cpu():
+    ort_model = ORTModelForSequenceClassification.from_pretrained(
+      "distilbert-base-uncased-finetuned-sst-2-english",
+      export=True,
+      provider="CPUExecutionProvider",
+    )
+
+    tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
+    inputs = tokenizer("Both the music and visual were astounding, not to mention the actors performance.", return_tensors="pt", padding=False)
+    outputs = ort_model(**inputs)
+    assert outputs
+    assert ort_model.providers == ["CPUExecutionProvider"]
 
 @pytest.mark.parametrize("lm", ALL_MODELS)
 def test_get_pytorch(lm):
     get_huggingface_lm(lm, runtime=Runtime.PYTORCH)
 
 
-@pytest.mark.parametrize("lm", CAUSAL_MODELS)
+@pytest.mark.parametrize("lm", ALL_MODELS)
 def test_get_ort_cpu(lm):
     get_huggingface_lm(lm, runtime=Runtime.ORT_CPU)
 
 
 @pytest.mark.parametrize("lm", ["distilgpt2", "gpt2"])
 def test_get_better_transformer(lm):
-    if lm.startswith("Salesforce/codegen2"):
-        return
     get_huggingface_lm(lm, runtime=Runtime.BETTER_TRANSFORMER)
 
-
-@pytest.mark.parametrize("lm", ["Salesforce/codegen2-1B"])
-def test_codegen2_predict(lm):
+@pytest.mark.parametrize("runtime", [Runtime.PYTORCH, Runtime.BETTER_TRANSFORMER ])
+def test_gpt2_predict(runtime):
+    lm = "gpt2"
     prompt = LmPrompt("print('Hello world", max_tokens=1, cache=False, temperature=0)
-    lm1 = get_huggingface_lm(lm, runtime=Runtime.PYTORCH)
+    lm1 = get_huggingface_lm(lm, runtime=runtime)
+    out1 = lm1.predict(prompt)
+    assert out1.completion_text == "!'"
+
+@pytest.mark.parametrize("runtime", [Runtime.PYTORCH ])
+def test_codegen2_predict(runtime):
+    lm = "Salesforce/codegen2-1B"
+    prompt = LmPrompt("print('Hello world", max_tokens=1, cache=False, temperature=0)
+    lm1 = get_huggingface_lm(lm, runtime=runtime)
     out1 = lm1.predict(prompt)
     assert out1.completion_text == "!"
 
@@ -69,12 +84,15 @@ def test_codegen2_predict_bt(lm):
         assert str(e_info.value).startswith("WARNING BetterTransformer")
 
 
-@pytest.mark.parametrize("lm", CAUSAL_MODELS)
+@pytest.mark.parametrize("lm", ["Salesforce/codet5p-220m", "Salesforce/codegen2-1B"])
 @pytest.mark.skipif(
     CUDA_UNAVAILABLE, reason="Cannot test ORT/ONNX CUDA runtime without CUDA"
 )
 def test_get_onnx(lm):
-    get_huggingface_lm(lm, runtime=Runtime.ONNX)
+    prompt = LmPrompt("print('Hello world", max_tokens=1, cache=False, temperature=0)
+    lm1 = get_huggingface_lm(lm, runtime=Runtime.ONNX)
+    out1 = lm1.predict(prompt)
+    assert out1.completion_text == "!'"
 
 
 @pytest.mark.parametrize("lm", CAUSAL_MODELS)

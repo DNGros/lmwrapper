@@ -177,12 +177,13 @@ class HuggingfacePredictor(LmPredictor):
             self._tokenizer.bos_token
             + prompt.text,  # TODO: not sure why bos token is prepended for all models?
             return_tensors="pt",
-            padding=True,  # TODO: not all models have a padding token
-            truncation=True,
+            # padding=True,  # TODO: not all models have a padding token
+            # truncation=True,
             max_length=self._model.config.max_length,
-        )#.to(self._device)
+        ).to(self._device)
 
-        #self._model.to(self._device)
+        if not isinstance(self._model, ORTModel):
+            self._model.to(self._device)
 
         # output = self._model(**encoded_input)
         # text = self._tokenizer.decode(output[0])
@@ -300,7 +301,7 @@ def get_accelerator() -> device:
     if torch.cuda.is_available():
         if quant_config:
             assert bitsandbytes.COMPILED_WITH_CUDA
-        return torch.device("cuda")
+        return torch.device("cuda:0")
 
     # if torch.backends.mps.is_available():
     # return torch.device("mps")
@@ -313,7 +314,7 @@ def get_huggingface_lm(
     runtime: Runtime = Runtime.PYTORCH,
     precision: torch.dtype = torch.float32,
 ) -> HuggingfacePredictor:
-    _kwargs = {}
+    _kwargs = {"trust_remote_code": True}
     model_class = AutoModelForCausalLM
     if model.startswith("Salesforce/codegen"):
         if runtime == Runtime.BETTER_TRANSFORMER:
@@ -353,20 +354,14 @@ def initialize_hf_model(
         tokenizer = AutoTokenizer.from_pretrained(model_name)
 
         model = model_class.from_pretrained(
-            model_name, torch_dtype=precision, **_kwargs
-        )
-
-        warmup_model(model, tokenizer, device=torch_device)
+            model_name, torch_dtype=precision, device_map="auto", **_kwargs
+        ).to(torch_device)
     elif runtime == Runtime.ORT_CPU:
         if not torch_device.type == "cpu":
             print(
                 f"Specified torch device {torch_device} but ORT CPU runtime"
                 " can only use CPU."
             )
-        provider_options = {
-            "trt_engine_cache_enable": True,
-            "trt_engine_cache_path": f"tmp/trt_cache_{model_name}_cpu",
-        }
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         _kwargs.pop("low_cpu_mem_usage", None)
         _kwargs.pop("device_map", None)
@@ -374,19 +369,13 @@ def initialize_hf_model(
             model_name,
             export=True,
             provider="CPUExecutionProvider",
-            provider_options=provider_options,
             session_options=session_options,
             **_kwargs,
         )
         assert "CPUExecutionProvider" in model.providers
-
-        warmup_model(model, tokenizer, device="cpu")
     elif runtime == Runtime.ONNX:
         if not torch_device.type == "cuda":
             raise Exception("Cannot run model on CUDA without CUDA.")
-        provider_options = {
-            "trt_engine_cache_enable": True,
-        }
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         _kwargs.pop("low_cpu_mem_usage", None)
         _kwargs.pop("device_map", None)
@@ -395,12 +384,10 @@ def initialize_hf_model(
             model_name,
             export=True,
             provider="CUDAExecutionProvider",
-            provider_options=provider_options,
             session_options=session_options,
             **_kwargs,
         )
         assert "CUDAExecutionProvider" in model.providers
-        warmup_model(model, tokenizer, device=torch_device)
     elif runtime == Runtime.TENSORRT:
         if not torch_device.type == "cuda":
             raise Exception("Cannot run model on CUDA without CUDA.")
@@ -426,12 +413,11 @@ def initialize_hf_model(
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         model = BetterTransformer.transform(
             model_class.from_pretrained(
-                model_name, torch_dtype=precision, **_kwargs
+                model_name, device_map="auto", torch_dtype=precision, **_kwargs
             )
         )
-        warmup_model(model, tokenizer, device=torch_device)
 
-    return HuggingfacePredictor(tokenizer, model)
+    return HuggingfacePredictor(tokenizer, model, device=torch_device)
 
 
 def warmup_model(
@@ -439,19 +425,25 @@ def warmup_model(
     tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
     device: device,
 ):
-    text = ["Hello, I'm a language model" * 1]
+    short = [" "]
+    long_txt = ["hello"*1024]
     if model.config.pad_token_id is None:
         tokenizer.pad_token_id = 0
     encoded_input = tokenizer(
-        text,
+        short,
         return_tensors="pt",
-        padding=not (
-            hasattr(model, "use_bettertransformer")
-            and model.use_bettertransformer is True
-        ),  # Don't pad for bettertransformers
+        padding=False,  # Don't pad for bettertransformers
         truncation=True,
         max_length=model.config.max_length,
     )#.to(device)
+
+    encoded_input_long = tokenizer(
+        long_txt,
+        return_tensors="pt",
+        padding=False,  # Don't pad for bettertransformers
+        truncation=True,
+        max_length=model.config.max_length,
+    )
 
     generation_config = GenerationConfig(
         max_new_tokens=20,
