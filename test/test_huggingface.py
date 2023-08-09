@@ -3,7 +3,9 @@ import pytest
 from lmwrapper.huggingface_wrapper import Runtime, get_huggingface_lm
 from lmwrapper.structs import LmPrompt
 import torch
-
+from optimum.onnxruntime import ORTModelForSequenceClassification
+from transformers import AutoTokenizer
+from optimum.pipelines import pipeline
 
 CUDA_UNAVAILABLE = not torch.cuda.is_available()
 SMALL_GPU = CUDA_UNAVAILABLE or torch.cuda.mem_get_info()[0] < 17179869184  # 16GB
@@ -15,14 +17,10 @@ else:
     ALL_MODELS = ["distilgpt2", "gpt2", "Salesforce/codet5p-6b", "Salesforce/codegen2-3_7B"]
     CAUSAL_MODELS = ["distilgpt2", "gpt2", "Salesforce/codegen2-3_7B"]
 
-# @pytest.mark.skipif(
-#     CUDA_UNAVAILABLE, reason="Cannot test ORT/ONNX CUDA runtime without CUDA"
-# )
-@pytest.mark.skip
+@pytest.mark.skipif(
+    CUDA_UNAVAILABLE, reason="Cannot test ORT/ONNX CUDA runtime without CUDA"
+)
 def test_onnx_works():
-    from optimum.onnxruntime import ORTModelForSequenceClassification
-    from transformers import AutoTokenizer
-
     ort_model = ORTModelForSequenceClassification.from_pretrained(
       "philschmid/tiny-bert-sst2-distilled",
       export=True,
@@ -34,9 +32,6 @@ def test_onnx_works():
     outputs = ort_model(**inputs)
     assert outputs
     assert ort_model.providers == ["CUDAExecutionProvider", "CPUExecutionProvider"]
-    from optimum.pipelines import pipeline
-
-    tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
 
     pipe = pipeline(task="text-classification", model=ort_model, tokenizer=tokenizer, device="cuda:0")
     result = pipe("Both the music and visual were astounding, not to mention the actors performance.")
