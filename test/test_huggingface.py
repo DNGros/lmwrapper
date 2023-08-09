@@ -25,9 +25,19 @@ def test_get_better_transformer(lm):
 
 
 @pytest.mark.parametrize("lm", ["Salesforce/codegen2-1B"])
-def test_get_better_transformer_codegen(lm):
-    get_huggingface_lm(lm, runtime=Runtime.PYTORCH)
-    get_huggingface_lm(lm, runtime=Runtime.BETTER_TRANSFORMER)
+def test_codegen2_predict(lm):
+    prompt = LmPrompt(
+        "print('Hello world", max_tokens=1, cache=False, temperature=0
+    )
+    lm1 = get_huggingface_lm(lm, runtime=Runtime.PYTORCH)
+    out1 = lm1.predict(prompt)
+    assert out1.completion_text == "!"
+
+@pytest.mark.parametrize("lm", ["Salesforce/codegen2-1B"])
+def test_codegen2_predict_bt(lm):
+    with pytest.raises(Exception) as e_info:
+        get_huggingface_lm(lm, runtime=Runtime.BETTER_TRANSFORMER)
+        assert str(e_info.value).startswith("WARNING BetterTransformer")
 
 
 @pytest.mark.parametrize("lm", ALL_MODELS)

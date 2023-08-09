@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 from functools import cached_property
-from pprint import pprint
 from typing import Union, List, Any
-import os
 
 from torch import device
 from lmwrapper.abstract_predictor import LmPredictor
@@ -18,8 +16,7 @@ try:
     assert version.parse(torch.__version__) >= version.parse("2.0")
 except ImportError:
     raise ImportError(
-        "Expect to work on torch. Please see https://pytorch.org/ for install"
-        " info"
+        "Expect to work on torch. Please see https://pytorch.org/ for install" " info"
     )
 
 try:
@@ -27,6 +24,7 @@ try:
 
     assert version.parse(transformers.__version__) >= version.parse("4.31.0")
     import bitsandbytes
+
     assert version.parse(import_version("bitsandbytes")) >= version.parse("0.41.1")
 
     from transformers import BitsAndBytesConfig
@@ -46,25 +44,20 @@ try:
     )
 
     from transformers import (
-        TextGenerationPipeline,
-        pipeline,
         GenerationConfig,
         AutoTokenizer,
-        AutoModel,
         AutoModelForCausalLM,
         PreTrainedModel,
         PreTrainedTokenizer,
         PreTrainedTokenizerFast,
-        GPT2LMHeadModel,
         set_seed,
         T5ForConditionalGeneration,
-        CodeGenForCausalLM
     )
 
     set_seed(42)
 except ImportError:
     raise ImportError(
-        "You must install transformers to use Huggingface models. "
+        "You must install transformers and bitsandbytes to use Huggingface models. "
         "`pip install transformers` and torch"
     )
 
@@ -74,11 +67,13 @@ if _ONNX_RUNTIME:
     try:
         from optimum import version as optimum_version
 
-        assert version.parse(optimum_version.__version__) >= version.parse(
-            "1.11.0"
-        )
+        assert version.parse(optimum_version.__version__) >= version.parse("1.11.0")
 
-        from optimum.onnxruntime import ORTModelForCausalLM, ORTModelForSeq2SeqLM, ORTModel
+        from optimum.onnxruntime import (
+            ORTModelForCausalLM,
+            ORTModelForSeq2SeqLM,
+            ORTModel,
+        )
         from optimum.bettertransformer import BetterTransformer
 
         import xformers
@@ -167,14 +162,17 @@ class HuggingfacePredictor(LmPredictor):
         if temperature == 0:
             temperature = 1e-9
         assert self._tokenizer.bos_token
+
+        not (
+            hasattr(self._model, "use_bettertransformer")
+            and self._model.use_bettertransformer is True
+        )
+
         encoded_input = self._tokenizer(
             self._tokenizer.bos_token
             + prompt.text,  # TODO: not sure why bos token is prepended for all models?
             return_tensors="pt",
-            padding=not (
-                hasattr(self._model, "use_bettertransformer")
-                and self._model.use_bettertransformer is True
-            ),  # TODO: not all models have a padding token
+            padding=True,  # TODO: not all models have a padding token
             truncation=True,
             max_length=self._model.config.max_length,
         ).to(self._device)
@@ -224,7 +222,16 @@ class HuggingfacePredictor(LmPredictor):
         self._model.forward = old_forward
 
         s = generation_output.sequences[0]
-        text = self._tokenizer.decode(s[len(encoded_input["input_ids"][0]) :])
+        text = self._tokenizer.decode(
+            s[len(encoded_input["input_ids"][0]) :],
+        )
+
+        cleaned_text = self._tokenizer.decode(
+            s[len(encoded_input["input_ids"][0]) :],
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=True,
+        )
+
         tokens = self._tokenizer.convert_ids_to_tokens(s)
         # strip the bos token
         tokens = tokens[1:]
@@ -250,6 +257,7 @@ class HuggingfacePredictor(LmPredictor):
 
         return HuggingfacePrediction(
             completion_text=text,
+            clean_completion_text=cleaned_text,
             prompt=prompt,
             metad=generation_output,
             _prompt_encoding=encoded_input,
@@ -278,9 +286,7 @@ def _gather_logprobs_from_logits(
     selected_toks: torch.LongTensor,
 ):
     logprobs = torch.log_softmax(logits, dim=-1).detach()
-    gen_probs = torch.gather(logprobs, -1, selected_toks.unsqueeze(-1)).squeeze(
-        -1
-    )
+    gen_probs = torch.gather(logprobs, -1, selected_toks.unsqueeze(-1)).squeeze(-1)
     return gen_probs
 
 
@@ -301,26 +307,29 @@ def get_huggingface_lm(
     precision: torch.dtype = torch.float32,
 ) -> HuggingfacePredictor:
     _kwargs = {}
+    model_class = AutoModelForCausalLM
     match model:
-        case "Salesforce/codegen2-1B":
-            model_class = AutoModelForCausalLM
-            _kwargs = {"trust_remote_code": True, "revision": "main"}
-        case "Salesforce/codet5p-220m":
+        case s if s.startswith("Salesforce/codegen"):
+            if runtime == Runtime.BETTER_TRANSFORMER:
+                raise Exception(
+                    "WARNING BetterTransformer breaks CodeGen models with AutoClass. Please use a different model or runtime."
+                )
+            else:
+                _kwargs = {"trust_remote_code": True, "revision": "main"}
+        case s if s.startswith("Salesforce/codet5"):
             model_class = T5ForConditionalGeneration
-        case "Salesforce/codegen2-1B":
-            model_class = CodeGenForCausalLM
-        case _:
-            model_class = AutoModelForCausalLM
 
     return initialize_hf_model(
         model, model_class, runtime=runtime, precision=precision, _kwargs=_kwargs
     )
+
 
 def get_ort_model(model: PreTrainedModel) -> ORTModel:
     if model == T5ForConditionalGeneration:
         return ORTModelForSeq2SeqLM
 
     return ORTModelForCausalLM
+
 
 def initialize_hf_model(
     model_name: str,
@@ -439,9 +448,7 @@ def warmup_model(
     assert len(encoded_input[0]) < model.config.max_length
     model.to(device)
     for i in range(3):
-        output = model.generate(
-            **encoded_input, generation_config=generation_config
-        )
+        output = model.generate(**encoded_input, generation_config=generation_config)
         tokenizer.decode(
             output[0],
             skip_special_tokens=True,

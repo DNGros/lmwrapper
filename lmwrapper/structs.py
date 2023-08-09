@@ -16,9 +16,9 @@ class LmPrompt:
     max_tokens: int
     stop: List[str] = None
     logprobs: int = 1
-    """Include the log probabilities on the logprobs most likely tokens, as well the chosen tokens. 
-    For example, if logprobs is 5, the API will return a list of the 5 most likely tokens. 
-    The model will always return the logprob of the sampled token, 
+    """Include the log probabilities on the logprobs most likely tokens, as well the chosen tokens.
+    For example, if logprobs is 5, the API will return a list of the 5 most likely tokens.
+    The model will always return the logprob of the sampled token,
     so there may be up to logprobs+1 elements in the response.
 
     In the case of openai the maximum value for logprobs is 5.
@@ -152,6 +152,7 @@ class LmChatDialog(list[LmChatTurn]):
 @dataclass
 class LmPrediction:
     completion_text: str
+    clean_completion_text: str
     prompt: LmPrompt
     metad: Any
 
@@ -185,6 +186,9 @@ class LmPrediction:
 
     def get_full_text(self):
         return self.prompt.text + self.completion_text
+
+    def get_full_clean_text(self):
+        return self.prompt.text + self.clean_completion_text
 
     def get_full_tokens(self):
         raise NotImplementedError("This version of prediction does not support full tokens")
