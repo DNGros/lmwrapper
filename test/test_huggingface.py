@@ -27,8 +27,8 @@ def test_onnx_works():
       provider="CUDAExecutionProvider",
     )
 
-    tokenizer = AutoTokenizer.from_pretrained("philschmid/tiny-bert-sst2-distilled")
-    inputs = tokenizer("Both the music and visual were astounding, not to mention the actors performance.", return_tensors="pt", padding=True)
+    tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
+    inputs = tokenizer(["Both the music and visual were astounding, not to mention the actors performance."], return_tensors="pt", padding=False)
     outputs = ort_model(**inputs)
     assert outputs
     assert ort_model.providers == ["CUDAExecutionProvider", "CPUExecutionProvider"]
