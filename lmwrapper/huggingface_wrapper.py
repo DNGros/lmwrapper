@@ -180,9 +180,10 @@ class HuggingfacePredictor(LmPredictor):
             padding=True,  # TODO: not all models have a padding token
             truncation=True,
             max_length=self._model.config.max_length,
-        ).to(self._device)
+        )#.to(self._device)
 
-        self._model.to(self._device)
+        #self._model.to(self._device)
+
         # output = self._model(**encoded_input)
         # text = self._tokenizer.decode(output[0])
         # Ref https://gist.github.com/kinoc/8a042d8c5683725aa8c372274c02ea2f
@@ -445,7 +446,7 @@ def warmup_model(
         ),  # Don't pad for bettertransformers
         truncation=True,
         max_length=model.config.max_length,
-    ).to(device)
+    )#.to(device)
 
     generation_config = GenerationConfig(
         max_new_tokens=20,
@@ -457,7 +458,7 @@ def warmup_model(
         pad_token_id=tokenizer.pad_token_id,
     )
     assert len(encoded_input[0]) < model.config.max_length
-    model.to(device)
+    #model.to(device)
     for i in range(3):
         output = model.generate(**encoded_input, generation_config=generation_config)
         tokenizer.decode(
