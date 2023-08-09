@@ -22,13 +22,13 @@ else:
 )
 def test_onnx_works():
     ort_model = ORTModelForSequenceClassification.from_pretrained(
-      "philschmid/tiny-bert-sst2-distilled",
+      "distilbert-base-uncased-finetuned-sst-2-english",
       export=True,
       provider="CUDAExecutionProvider",
     )
 
     tokenizer = AutoTokenizer.from_pretrained("philschmid/tiny-bert-sst2-distilled")
-    inputs = tokenizer("expectations were low, actual enjoyment was high", return_tensors="pt", padding=True)
+    inputs = tokenizer("Both the music and visual were astounding, not to mention the actors performance.", return_tensors="pt", padding=True)
     outputs = ort_model(**inputs)
     assert outputs
     assert ort_model.providers == ["CUDAExecutionProvider", "CPUExecutionProvider"]
