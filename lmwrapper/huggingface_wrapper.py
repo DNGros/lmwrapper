@@ -56,7 +56,7 @@ try:
         PreTrainedTokenizerFast,
         set_seed,
         T5ForConditionalGeneration,
-        AutoModelForSeq2SeqLM
+        AutoModelForSeq2SeqLM,
     )
 
     set_seed(42)
@@ -329,14 +329,13 @@ def get_huggingface_lm(
             _kwargs = {"trust_remote_code": True, "low_cpu_mem_usage": True}
             precision = torch.float16
 
-
     return initialize_hf_model(
         model, model_class, runtime=runtime, precision=precision, _kwargs=_kwargs
     )
 
 
 def get_ort_model(model: PreTrainedModel) -> ORTModel:
-    if model == T5ForConditionalGeneration:
+    if model in {T5ForConditionalGeneration, AutoModelForSeq2SeqLM}:
         return ORTModelForSeq2SeqLM
 
     return ORTModelForCausalLM
@@ -424,7 +423,9 @@ def initialize_hf_model(
         case Runtime.BETTER_TRANSFORMER:
             tokenizer = AutoTokenizer.from_pretrained(model_name)
             model = BetterTransformer.transform(
-                model_class.from_pretrained(model_name, torch_dtype=precision, **_kwargs)
+                model_class.from_pretrained(
+                    model_name, torch_dtype=precision, **_kwargs
+                )
             )
             warmup_model(model, tokenizer, device=torch_device)
 
