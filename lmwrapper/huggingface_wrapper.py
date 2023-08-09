@@ -314,20 +314,19 @@ def get_huggingface_lm(
 ) -> HuggingfacePredictor:
     _kwargs = {}
     model_class = AutoModelForCausalLM
-    match model:
-        case s if s.startswith("Salesforce/codegen"):
-            if runtime == Runtime.BETTER_TRANSFORMER:
-                raise Exception(
-                    "WARNING BetterTransformer breaks CodeGen models with AutoClass. Please use a different model or runtime."
-                )
-            else:
-                _kwargs = {"trust_remote_code": True, "revision": "main"}
-        case s if s.startswith("Salesforce/codet5") and not s.endswith("b"):
-            model_class = T5ForConditionalGeneration
-        case s if s.startswith("Salesforce/codet5p-") and s.endswith("b"):
-            model_class = AutoModelForSeq2SeqLM
-            _kwargs = {"trust_remote_code": True, "low_cpu_mem_usage": True}
-            precision = torch.float16
+    if model.startswith("Salesforce/codegen"):
+        if runtime == Runtime.BETTER_TRANSFORMER:
+            raise Exception(
+                "WARNING BetterTransformer breaks CodeGen models with AutoClass. Please use a different model or runtime."
+            )
+        else:
+            _kwargs = {"trust_remote_code": True, "revision": "main"}
+    elif model.startswith("Salesforce/codet5") and not model.endswith("b"):
+        model_class = T5ForConditionalGeneration
+    elif model.startswith("Salesforce/codet5p-") and model.endswith("b"):
+        model_class = AutoModelForSeq2SeqLM
+        _kwargs = {"trust_remote_code": True, "low_cpu_mem_usage": True}
+        precision = torch.float16
 
     return initialize_hf_model(
         model, model_class, runtime=runtime, precision=precision, _kwargs=_kwargs
@@ -375,7 +374,6 @@ def initialize_hf_model(
                 provider="CPUExecutionProvider",
                 provider_options=provider_options,
                 session_options=session_options,
-                torch_dtype=precision,
                 **_kwargs,
             )
             assert "CPUExecutionProvider" in model.providers
@@ -396,7 +394,6 @@ def initialize_hf_model(
                 provider="CUDAExecutionProvider",
                 provider_options=provider_options,
                 session_options=session_options,
-                torch_dtype=precision,
                 **_kwargs,
             )
             assert "CUDAExecutionProvider" in model.providers
