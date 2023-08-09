@@ -386,7 +386,6 @@ def initialize_hf_model(
             raise Exception("Cannot run model on CUDA without CUDA.")
         provider_options = {
             "trt_engine_cache_enable": True,
-            "trt_engine_cache_path": f"tmp/trt_cache_{model_name}_onnx",
         }
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         _kwargs.pop("low_cpu_mem_usage", None)
