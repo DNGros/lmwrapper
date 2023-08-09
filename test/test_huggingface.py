@@ -33,6 +33,10 @@ def test_onnx_works():
     assert outputs
     assert ort_model.providers == ["CUDAExecutionProvider", "CPUExecutionProvider"]
 
+    pipe = pipeline(task="text-classification", model=ort_model, tokenizer=tokenizer, device="cuda")
+    result = pipe("Both the music and visual were astounding, not to mention the actors performance.")
+    assert result[0]["label"] == "POSITIVE"
+
 @pytest.mark.parametrize("lm", ALL_MODELS)
 def test_get_pytorch(lm):
     get_huggingface_lm(lm, runtime=Runtime.PYTORCH)
