@@ -369,6 +369,7 @@ def initialize_hf_model(
                 "trt_engine_cache_path": f"tmp/trt_cache_{model_name}_cpu",
             }
             tokenizer = AutoTokenizer.from_pretrained(model_name)
+            del _kwargs["low_cpu_mem_usage"]
             model = get_ort_model(model_class).from_pretrained(
                 model_name,
                 export=True,
@@ -388,6 +389,7 @@ def initialize_hf_model(
                 "trt_engine_cache_path": f"tmp/trt_cache_{model_name}_onnx",
             }
             tokenizer = AutoTokenizer.from_pretrained(model_name)
+            del _kwargs["low_cpu_mem_usage"]
 
             model = get_ort_model(model_class).from_pretrained(
                 model_name,
@@ -407,6 +409,8 @@ def initialize_hf_model(
                 "trt_engine_cache_path": f"tmp/trt_cache_{model_name}_tensorrt",
             }
             tokenizer = AutoTokenizer.from_pretrained(model_name)
+            del _kwargs["low_cpu_mem_usage"]
+
             model = get_ort_model(model_class).from_pretrained(
                 model_name,
                 export=True,
