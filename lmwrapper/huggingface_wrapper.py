@@ -391,18 +391,18 @@ def initialize_hf_model(
         _kwargs.pop("low_cpu_mem_usage", None)
         _kwargs.pop("device_map", None)
 
-        model = get_ort_model(model_class).from_pretrained(
-            model_name,
-            export=True,
-            provider="CUDAExecutionProvider",
-            session_options=session_options,
-            **_kwargs,
-        )
-        assert "CUDAExecutionProvider" in model.providers
+        # model = get_ort_model(model_class).from_pretrained(
+        #     model_name,
+        #     export=True,
+        #     provider="CUDAExecutionProvider",
+        #     session_options=session_options,
+        #     **_kwargs,
+        # )
+        # assert "CUDAExecutionProvider" in model.providers
         save_dir = f"{model_name}_optimized_o3"
-        optimizer = ORTOptimizer.from_pretrained(model)
-        optimization_config = AutoOptimizationConfig.O3()
-        optimizer.optimize(save_dir=save_dir, optimization_config=optimization_config)
+        # optimizer = ORTOptimizer.from_pretrained(model)
+        # optimization_config = AutoOptimizationConfig.O3()
+        # optimizer.optimize(save_dir=save_dir, optimization_config=optimization_config)
         model = get_ort_model(model_class).from_pretrained(save_dir, provider="CUDAExecutionProvider")
     elif runtime == Runtime.TENSORRT:
         if not torch_device.type == "cuda":
