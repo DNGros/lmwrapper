@@ -246,7 +246,7 @@ class HuggingfacePredictor(LmPredictor):
         tokens = tokens[1:]
         # Calculate the logprobs if needed
         if need_log_prob:
-            logprobs = generation_output.sequences_scores.item()
+            logprobs = None #generation_output.sequences_scores.item()
             # all_logits = torch.cat(cached_logits, dim=1)
             # assert all_logits.shape[0] == 1  # batch
             # assert all_logits.shape[1] == len(tokens)
