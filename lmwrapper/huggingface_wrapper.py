@@ -322,7 +322,7 @@ def get_huggingface_lm(
                 )
             else:
                 _kwargs = {"trust_remote_code": True, "revision": "main"}
-        case s if s.startswith("Salesforce/codet5"):
+        case s if s.startswith("Salesforce/codet5") and not s.endswith("b"):
             model_class = T5ForConditionalGeneration
         case s if s.startswith("Salesforce/codet5p-") and s.endswith("b"):
             model_class = AutoModelForSeq2SeqLM
