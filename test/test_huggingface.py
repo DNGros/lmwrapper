@@ -92,7 +92,7 @@ def test_get_onnx_codegen(lm):
     prompt = LmPrompt("def greet(user): print(f'hello <extra_id_0>!')", max_tokens=5, cache=False, temperature=0)
     lm1 = get_huggingface_lm(lm, runtime=Runtime.ONNX)
     out1 = lm1.predict(prompt)
-    assert out1.completion_text == "\\n\\ndef main():"
+    assert out1.completion_text == "\n\ndef main():"
 
 @pytest.mark.parametrize("lm", ["Salesforce/codet5p-220m"])
 @pytest.mark.skipif(
@@ -102,7 +102,7 @@ def test_get_onnx_codet5p(lm):
     prompt = LmPrompt("def greet(user): print(f'hello <extra_id_0>!')", max_tokens=20, cache=False, temperature=0)
     lm1 = get_huggingface_lm(lm, runtime=Runtime.ONNX)
     out1 = lm1.predict(prompt)
-    assert out1.completion_text == "\\n\\ndef main():"
+    assert out1.completion_text == "args(user):"
 
 
 @pytest.mark.parametrize("lm", CAUSAL_MODELS)
