@@ -296,7 +296,8 @@ def _gather_logprobs_from_logits(
 
 def get_accelerator() -> device:
     if torch.cuda.is_available():
-        assert bitsandbytes.COMPILED_WITH_CUDA
+        if quant_config:
+            assert bitsandbytes.COMPILED_WITH_CUDA
         return torch.device("cuda")
 
     # if torch.backends.mps.is_available():
