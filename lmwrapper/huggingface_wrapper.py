@@ -78,7 +78,9 @@ if _ONNX_RUNTIME:
             ORTModelForCausalLM,
             ORTModelForSeq2SeqLM,
             ORTModel,
+            ORTOptimizer,
         )
+        from optimum.onnxruntime.configuration import AutoOptimizationConfig
         from optimum.bettertransformer import BetterTransformer
 
         import xformers
@@ -209,16 +211,16 @@ class HuggingfacePredictor(LmPredictor):
         #   require calling the model again https://discuss.huggingface.co/t/announcement-generation-get-probabilities-for-generated-output/30075/17
         # Instead we are going to patch the model forward to log calls
 
-        old_forward = self._model.forward
-        cached_logits = []
+        # old_forward = self._model.forward
+        # cached_logits = []
 
-        def new_call(*args, **kwargs):
-            nonlocal cached_logits
-            val = old_forward(*args, **kwargs)
-            cached_logits.append(val.logits)
-            return val
+        # def new_call(*args, **kwargs):
+        #     nonlocal cached_logits
+        #     val = old_forward(*args, **kwargs)
+        #     cached_logits.append(val.logits)
+        #     return val
 
-        self._model.forward = new_call
+        # self._model.forward = new_call
 
         with torch.no_grad():
             generation_output = self._model.generate(
@@ -226,7 +228,7 @@ class HuggingfacePredictor(LmPredictor):
                 generation_config=gen_config,
             )
 
-        self._model.forward = old_forward
+        # self._model.forward = old_forward
 
         s = generation_output.sequences[0]
         text = self._tokenizer.decode(
@@ -244,14 +246,15 @@ class HuggingfacePredictor(LmPredictor):
         tokens = tokens[1:]
         # Calculate the logprobs if needed
         if need_log_prob:
-            all_logits = torch.cat(cached_logits, dim=1)
-            assert all_logits.shape[0] == 1  # batch
-            assert all_logits.shape[1] == len(tokens)
-            logprobs = _gather_logprobs_from_logits(
-                all_logits[0],
-                s[1:],
-            )
-            assert len(logprobs) == len(tokens)
+            logprobs = generation_output.sequences_scores.item()
+            # all_logits = torch.cat(cached_logits, dim=1)
+            # assert all_logits.shape[0] == 1  # batch
+            # assert all_logits.shape[1] == len(tokens)
+            # logprobs = _gather_logprobs_from_logits(
+            #     all_logits[0],
+            #     s[1:],
+            # )
+            # assert len(logprobs) == len(tokens)
         else:
             logprobs = None
 
@@ -322,12 +325,20 @@ def get_huggingface_lm(
                 "WARNING BetterTransformer breaks CodeGen models with AutoClass. Please use a different model or runtime."
             )
         else:
-            _kwargs = {"trust_remote_code": True, "revision": "main", "device_map": "auto"}
+            _kwargs = {
+                "trust_remote_code": True,
+                "revision": "main",
+                "device_map": "auto",
+            }
     elif model.startswith("Salesforce/codet5") and not model.endswith("b"):
         model_class = T5ForConditionalGeneration
     elif model.startswith("Salesforce/codet5p-") and model.endswith("b"):
         model_class = AutoModelForSeq2SeqLM
-        _kwargs = {"trust_remote_code": True, "low_cpu_mem_usage": True, "device_map": "auto"}
+        _kwargs = {
+            "trust_remote_code": True,
+            "low_cpu_mem_usage": True,
+            "device_map": "auto",
+        }
         precision = torch.float16
 
     return initialize_hf_model(
@@ -388,6 +399,11 @@ def initialize_hf_model(
             **_kwargs,
         )
         assert "CUDAExecutionProvider" in model.providers
+        save_dir = f"{model_name}_optimized_o3"
+        optimizer = ORTOptimizer.from_pretrained(model)
+        optimization_config = AutoOptimizationConfig.O3()
+        optimizer.optimize(save_dir=save_dir, optimization_config=optimization_config)
+        model = get_ort_model(model_class).from_pretrained(save_dir, provider="CUDAExecutionProvider")
     elif runtime == Runtime.TENSORRT:
         if not torch_device.type == "cuda":
             raise Exception("Cannot run model on CUDA without CUDA.")
@@ -426,7 +442,7 @@ def warmup_model(
     device: device,
 ):
     short = [" "]
-    long_txt = ["hello"*1024]
+    long_txt = ["hello" * 1024]
     if model.config.pad_token_id is None:
         tokenizer.pad_token_id = 0
     encoded_input = tokenizer(
@@ -435,7 +451,7 @@ def warmup_model(
         padding=False,  # Don't pad for bettertransformers
         truncation=True,
         max_length=model.config.max_length,
-    )#.to(device)
+    )  # .to(device)
 
     encoded_input_long = tokenizer(
         long_txt,
@@ -455,7 +471,7 @@ def warmup_model(
         pad_token_id=tokenizer.pad_token_id,
     )
     assert len(encoded_input[0]) < model.config.max_length
-    #model.to(device)
+    # model.to(device)
     for i in range(3):
         output = model.generate(**encoded_input, generation_config=generation_config)
         tokenizer.decode(
