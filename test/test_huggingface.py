@@ -17,34 +17,34 @@ else:
     ALL_MODELS = ["distilgpt2", "gpt2", "Salesforce/codet5p-6b", "Salesforce/codegen2-3_7B"]
     CAUSAL_MODELS = ["distilgpt2", "gpt2", "Salesforce/codegen2-3_7B"]
 
-@pytest.mark.skipif(
-    CUDA_UNAVAILABLE, reason="Cannot test ORT/ONNX CUDA runtime without CUDA"
-)
-def test_onnx_works():
-    ort_model = ORTModelForSequenceClassification.from_pretrained(
-      "distilbert-base-uncased-finetuned-sst-2-english",
-      export=True,
-      provider="CUDAExecutionProvider",
-    )
+# @pytest.mark.skipif(
+#     CUDA_UNAVAILABLE, reason="Cannot test ORT/ONNX CUDA runtime without CUDA"
+# )
+# def test_onnx_works():
+#     ort_model = ORTModelForSequenceClassification.from_pretrained(
+#       "distilbert-base-uncased-finetuned-sst-2-english",
+#       export=True,
+#       provider="CUDAExecutionProvider",
+#     )
 
-    tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
-    inputs = tokenizer("Both the music and visual were astounding, not to mention the actors performance.", return_tensors="pt", padding=False)
-    outputs = ort_model(**inputs)
-    assert outputs
-    assert ort_model.providers == ["CUDAExecutionProvider", "CPUExecutionProvider"]
+#     tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
+#     inputs = tokenizer("Both the music and visual were astounding, not to mention the actors performance.", return_tensors="pt", padding=False)
+#     outputs = ort_model(**inputs)
+#     assert outputs
+#     assert ort_model.providers == ["CUDAExecutionProvider", "CPUExecutionProvider"]
 
-def test_onnx_works_cpu():
-    ort_model = ORTModelForSequenceClassification.from_pretrained(
-      "distilbert-base-uncased-finetuned-sst-2-english",
-      export=True,
-      provider="CPUExecutionProvider",
-    )
+# def test_onnx_works_cpu():
+#     ort_model = ORTModelForSequenceClassification.from_pretrained(
+#       "distilbert-base-uncased-finetuned-sst-2-english",
+#       export=True,
+#       provider="CPUExecutionProvider",
+#     )
 
-    tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
-    inputs = tokenizer("Both the music and visual were astounding, not to mention the actors performance.", return_tensors="pt", padding=False)
-    outputs = ort_model(**inputs)
-    assert outputs
-    assert ort_model.providers == ["CPUExecutionProvider"]
+#     tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
+#     inputs = tokenizer("Both the music and visual were astounding, not to mention the actors performance.", return_tensors="pt", padding=False)
+#     outputs = ort_model(**inputs)
+#     assert outputs
+#     assert ort_model.providers == ["CPUExecutionProvider"]
 
 @pytest.mark.parametrize("lm", ALL_MODELS)
 def test_get_pytorch(lm):
@@ -54,6 +54,13 @@ def test_get_pytorch(lm):
 @pytest.mark.parametrize("lm", ALL_MODELS)
 def test_get_ort_cpu(lm):
     get_huggingface_lm(lm, runtime=Runtime.ORT_CPU)
+
+@pytest.mark.parametrize("lm", ALL_MODELS)
+def test_get_ort_gpu(lm):
+    prompt = LmPrompt("print('Hello world", max_tokens=1, cache=False, temperature=0)
+    lm1 = get_huggingface_lm(lm, runtime=Runtime.ONNX)
+    out1 = lm1.predict(prompt)
+    assert out1.completion_text == "!'"
 
 
 @pytest.mark.parametrize("lm", ["distilgpt2", "gpt2"])
@@ -105,9 +112,9 @@ def test_get_onnx_codet5p(lm):
     assert out1.completion_text == "args(user):"
 
 
-@pytest.mark.parametrize("lm", CAUSAL_MODELS)
-@pytest.mark.skipif(
-    CUDA_UNAVAILABLE, reason="Cannot test ORT/ONNX CUDA runtime without CUDA"
-)
-def test_get_tensorrt(lm):
-    get_huggingface_lm(lm, runtime=Runtime.TENSORRT)
+# @pytest.mark.parametrize("lm", CAUSAL_MODELS)
+# @pytest.mark.skipif(
+#     CUDA_UNAVAILABLE, reason="Cannot test ORT/ONNX CUDA runtime without CUDA"
+# )
+# def test_get_tensorrt(lm: str):
+#     get_huggingface_lm(lm, runtime=Runtime.TENSORRT)

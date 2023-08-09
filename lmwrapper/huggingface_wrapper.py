@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from functools import cached_property
+from pathlib import Path
 from typing import Union, List, Any
 
 from torch import device
@@ -179,9 +180,6 @@ class HuggingfacePredictor(LmPredictor):
             self._tokenizer.bos_token
             + prompt.text,  # TODO: not sure why bos token is prepended for all models?
             return_tensors="pt",
-            # padding=True,  # TODO: not all models have a padding token
-            # truncation=True,
-            max_length=self._model.config.max_length,
         ).to(self._device)
 
         if not isinstance(self._model, ORTModel):
@@ -376,40 +374,49 @@ def initialize_hf_model(
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         _kwargs.pop("low_cpu_mem_usage", None)
         _kwargs.pop("device_map", None)
-        model = get_ort_model(model_class).from_pretrained(
-            model_name,
-            export=True,
-            provider="CPUExecutionProvider",
-            session_options=session_options,
-            **_kwargs,
-        )
-        assert "CPUExecutionProvider" in model.providers
+        save_dir = f"{model_name.replace('/','_')}_optimized_cpu_o3"
+
+        if not Path(save_dir).exists():
+            model = get_ort_model(model_class).from_pretrained(
+                model_name,
+                export=True,
+                provider="CPUExecutionProvider",
+                session_options=session_options,
+                **_kwargs,
+            )
+            assert "CPUExecutionProvider" in model.providers
+            optimizer = ORTOptimizer.from_pretrained(model)
+            optimization_config = AutoOptimizationConfig.O3()
+            optimizer.optimize(save_dir=save_dir, optimization_config=optimization_config)
+        model = get_ort_model(model_class).from_pretrained(save_dir, provider="CPUExecutionProvider")
     elif runtime == Runtime.ONNX:
         if not torch_device.type == "cuda":
             raise Exception("Cannot run model on CUDA without CUDA.")
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         _kwargs.pop("low_cpu_mem_usage", None)
         _kwargs.pop("device_map", None)
+        save_dir = f"{model_name.replace('/','_')}_optimized_gpu_o3"
 
-        # model = get_ort_model(model_class).from_pretrained(
-        #     model_name,
-        #     export=True,
-        #     provider="CUDAExecutionProvider",
-        #     session_options=session_options,
-        #     **_kwargs,
-        # )
-        # assert "CUDAExecutionProvider" in model.providers
-        save_dir = f"{model_name}_optimized_o3"
-        # optimizer = ORTOptimizer.from_pretrained(model)
-        # optimization_config = AutoOptimizationConfig.O3()
-        # optimizer.optimize(save_dir=save_dir, optimization_config=optimization_config)
+        if not Path(save_dir).exists():
+            model = get_ort_model(model_class).from_pretrained(
+                model_name,
+                export=True,
+                provider="CUDAExecutionProvider",
+                session_options=session_options,
+                **_kwargs,
+            )
+            assert "CUDAExecutionProvider" in model.providers
+            optimizer = ORTOptimizer.from_pretrained(model)
+            optimization_config = AutoOptimizationConfig.O3()
+            optimizer.optimize(save_dir=save_dir, optimization_config=optimization_config)
         model = get_ort_model(model_class).from_pretrained(save_dir, provider="CUDAExecutionProvider")
     elif runtime == Runtime.TENSORRT:
         if not torch_device.type == "cuda":
             raise Exception("Cannot run model on CUDA without CUDA.")
+
         provider_options = {
             "trt_engine_cache_enable": True,
-            "trt_engine_cache_path": f"tmp/trt_cache_{model_name}_tensorrt",
+            "trt_engine_cache_path": f"tmp/trt_cache_{model_name.replace('/','_')}_tensorrt",
         }
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         _kwargs.pop("low_cpu_mem_usage", None)
