@@ -349,89 +349,88 @@ def initialize_hf_model(
     _kwargs: dict = {},
 ) -> HuggingfacePredictor:
     torch_device = get_accelerator()
-    match runtime:
-        case Runtime.PYTORCH:
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
+    if runtime == Runtime.PYTORCH:
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-            model = model_class.from_pretrained(
+        model = model_class.from_pretrained(
+            model_name, torch_dtype=precision, **_kwargs
+        )
+
+        warmup_model(model, tokenizer, device=torch_device)
+    elif runtime == Runtime.ORT_CPU:
+        if not torch_device.type == "cpu":
+            print(
+                f"Specified torch device {torch_device} but ORT CPU runtime"
+                " can only use CPU."
+            )
+        provider_options = {
+            "trt_engine_cache_enable": True,
+            "trt_engine_cache_path": f"tmp/trt_cache_{model_name}_cpu",
+        }
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        _kwargs.pop("low_cpu_mem_usage", None)
+        _kwargs.pop("device_map", None)
+        model = get_ort_model(model_class).from_pretrained(
+            model_name,
+            export=True,
+            provider="CPUExecutionProvider",
+            provider_options=provider_options,
+            session_options=session_options,
+            **_kwargs,
+        )
+        assert "CPUExecutionProvider" in model.providers
+
+        warmup_model(model, tokenizer, device="cpu")
+    elif runtime == Runtime.ONNX:
+        if not torch_device.type == "cuda":
+            raise Exception("Cannot run model on CUDA without CUDA.")
+        provider_options = {
+            "trt_engine_cache_enable": True,
+            "trt_engine_cache_path": f"tmp/trt_cache_{model_name}_onnx",
+        }
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        _kwargs.pop("low_cpu_mem_usage", None)
+        _kwargs.pop("device_map", None)
+
+        model = get_ort_model(model_class).from_pretrained(
+            model_name,
+            export=True,
+            provider="CUDAExecutionProvider",
+            provider_options=provider_options,
+            session_options=session_options,
+            **_kwargs,
+        )
+        assert "CUDAExecutionProvider" in model.providers
+        warmup_model(model, tokenizer, device=torch_device)
+    elif runtime == Runtime.TENSORRT:
+        if not torch_device.type == "cuda":
+            raise Exception("Cannot run model on CUDA without CUDA.")
+        provider_options = {
+            "trt_engine_cache_enable": True,
+            "trt_engine_cache_path": f"tmp/trt_cache_{model_name}_tensorrt",
+        }
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        _kwargs.pop("low_cpu_mem_usage", None)
+        _kwargs.pop("device_map", None)
+
+        model = get_ort_model(model_class).from_pretrained(
+            model_name,
+            export=True,
+            provider="TensorrtExecutionProvider",
+            provider_options=provider_options,
+            session_options=session_options,
+            **_kwargs,
+        )
+        assert "TensorrtExecutionProvider" in model.providers
+        warmup_model(model, tokenizer, device=torch_device)
+    elif runtime == Runtime.BETTER_TRANSFORMER:
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = BetterTransformer.transform(
+            model_class.from_pretrained(
                 model_name, torch_dtype=precision, **_kwargs
             )
-
-            warmup_model(model, tokenizer, device=torch_device)
-        case Runtime.ORT_CPU:
-            if not torch_device.type == "cpu":
-                print(
-                    f"Specified torch device {torch_device} but ORT CPU runtime"
-                    " can only use CPU."
-                )
-            provider_options = {
-                "trt_engine_cache_enable": True,
-                "trt_engine_cache_path": f"tmp/trt_cache_{model_name}_cpu",
-            }
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            _kwargs.pop("low_cpu_mem_usage", None)
-            _kwargs.pop("device_map", None)
-            model = get_ort_model(model_class).from_pretrained(
-                model_name,
-                export=True,
-                provider="CPUExecutionProvider",
-                provider_options=provider_options,
-                session_options=session_options,
-                **_kwargs,
-            )
-            assert "CPUExecutionProvider" in model.providers
-
-            warmup_model(model, tokenizer, device="cpu")
-        case Runtime.ONNX:
-            if not torch_device.type == "cuda":
-                raise Exception("Cannot run model on CUDA without CUDA.")
-            provider_options = {
-                "trt_engine_cache_enable": True,
-                "trt_engine_cache_path": f"tmp/trt_cache_{model_name}_onnx",
-            }
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            _kwargs.pop("low_cpu_mem_usage", None)
-            _kwargs.pop("device_map", None)
-
-            model = get_ort_model(model_class).from_pretrained(
-                model_name,
-                export=True,
-                provider="CUDAExecutionProvider",
-                provider_options=provider_options,
-                session_options=session_options,
-                **_kwargs,
-            )
-            assert "CUDAExecutionProvider" in model.providers
-            warmup_model(model, tokenizer, device=torch_device)
-        case Runtime.TENSORRT:
-            if not torch_device.type == "cuda":
-                raise Exception("Cannot run model on CUDA without CUDA.")
-            provider_options = {
-                "trt_engine_cache_enable": True,
-                "trt_engine_cache_path": f"tmp/trt_cache_{model_name}_tensorrt",
-            }
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            _kwargs.pop("low_cpu_mem_usage", None)
-            _kwargs.pop("device_map", None)
-
-            model = get_ort_model(model_class).from_pretrained(
-                model_name,
-                export=True,
-                provider="TensorrtExecutionProvider",
-                provider_options=provider_options,
-                session_options=session_options,
-                **_kwargs,
-            )
-            assert "TensorrtExecutionProvider" in model.providers
-            warmup_model(model, tokenizer, device=torch_device)
-        case Runtime.BETTER_TRANSFORMER:
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            model = BetterTransformer.transform(
-                model_class.from_pretrained(
-                    model_name, torch_dtype=precision, **_kwargs
-                )
-            )
-            warmup_model(model, tokenizer, device=torch_device)
+        )
+        warmup_model(model, tokenizer, device=torch_device)
 
     return HuggingfacePredictor(tokenizer, model)
 
