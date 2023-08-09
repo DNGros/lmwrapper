@@ -11,7 +11,7 @@ SMALL_GPU = CUDA_UNAVAILABLE or torch.cuda.mem_get_info()[0] < 17179869184  # 16
 if SMALL_GPU:
     ALL_MODELS = ["distilgpt2", "gpt2", "Salesforce/codet5p-220m", "Salesforce/codegen2-1B"]
 else:
-    ALL_MODELS = ["distilgpt2", "gpt2", "Salesforce/codet5p-16b", "Salesforce/codegen2-16B"]
+    ALL_MODELS = ["distilgpt2", "gpt2", "Salesforce/codet5p-6b", "Salesforce/codegen2-7B"]
 @pytest.mark.parametrize("lm", ALL_MODELS)
 def test_get_pytorch(lm):
     get_huggingface_lm(lm, runtime=Runtime.PYTORCH)
