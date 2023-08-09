@@ -23,3 +23,10 @@ setup(
     install_requires=get_requirments(),
     python_requires='>=3.10',
 )
+
+"""
+mamba install -c pytorch onnxruntime onnx datasets evaluate protobuf accelerate
+mamba install -c huggingface safetensors
+mamba install -c xformers xformers
+openai peft salesforce-codetf
+"""
