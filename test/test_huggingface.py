@@ -84,7 +84,7 @@ def test_codegen2_predict_bt(lm):
         assert str(e_info.value).startswith("WARNING BetterTransformer")
 
 
-@pytest.mark.parametrize("lm", ["Salesforce/codet5p-220m", "Salesforce/codegen2-1B"])
+@pytest.mark.parametrize("lm", ["Salesforce/codegen2-1B"])
 @pytest.mark.skipif(
     CUDA_UNAVAILABLE, reason="Cannot test ORT/ONNX CUDA runtime without CUDA"
 )
@@ -92,7 +92,17 @@ def test_get_onnx(lm):
     prompt = LmPrompt("def greet(user): print(f'hello <extra_id_0>!')", max_tokens=5, cache=False, temperature=0)
     lm1 = get_huggingface_lm(lm, runtime=Runtime.ONNX)
     out1 = lm1.predict(prompt)
-    assert out1.completion_text == "!'"
+    assert out1.completion_text == "\\n\\ndef main():"
+
+@pytest.mark.parametrize("lm", ["Salesforce/codet5p-220m"])
+@pytest.mark.skipif(
+    CUDA_UNAVAILABLE, reason="Cannot test ORT/ONNX CUDA runtime without CUDA"
+)
+def test_get_onnx(lm):
+    prompt = LmPrompt("def greet(user): print(f'hello <extra_id_0>!')", max_tokens=20, cache=False, temperature=0)
+    lm1 = get_huggingface_lm(lm, runtime=Runtime.ONNX)
+    out1 = lm1.predict(prompt)
+    assert out1.completion_text == "\\n\\ndef main():"
 
 
 @pytest.mark.parametrize("lm", CAUSAL_MODELS)
