@@ -14,7 +14,7 @@ if SMALL_GPU:
     ALL_MODELS = ["distilgpt2", "gpt2", "Salesforce/codet5p-220m", "Salesforce/codegen2-1B"]
     CAUSAL_MODELS = ["distilgpt2", "gpt2", "Salesforce/codegen2-1B"]
 else:
-    ALL_MODELS = ["distilgpt2", "gpt2", "Salesforce/codet5p-6b", "Salesforce/codegen2-3_7B"]
+    ALL_MODELS = ["distilgpt2", "gpt2", "Salesforce/codet5p-6b", "Salesforce/codegen2-3_7B", "Salesforce/codegen25-7b-instruct"]
     CAUSAL_MODELS = ["distilgpt2", "gpt2", "Salesforce/codegen2-3_7B"]
 
 # @pytest.mark.skipif(
@@ -50,6 +50,9 @@ else:
 def test_get_pytorch(lm):
     get_huggingface_lm(lm, runtime=Runtime.PYTORCH)
 
+def test_get_pytorch_instructcodet5p():
+    lm = "Salesforce/codegen25-7b-instruct"
+    get_huggingface_lm(lm, runtime=Runtime.PYTORCH)
 
 @pytest.mark.parametrize("lm", ALL_MODELS)
 def test_get_ort_cpu(lm):
