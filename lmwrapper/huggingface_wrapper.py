@@ -212,24 +212,25 @@ class HuggingfacePredictor(LmPredictor):
         #   require calling the model again https://discuss.huggingface.co/t/announcement-generation-get-probabilities-for-generated-output/30075/17
         # Instead we are going to patch the model forward to log calls
 
-        old_forward = self._model.forward
-        cached_logits = []
+        # old_forward = self._model.forward
+        # cached_logits = []
 
-        def new_call(*args, **kwargs):
-            nonlocal cached_logits
-            val = old_forward(*args, **kwargs)
-            cached_logits.append(val.logits)
-            return val
+        # def new_call(*args, **kwargs):
+        #     nonlocal cached_logits
+        #     val = old_forward(*args, **kwargs)
+        #     cached_logits.append(val.logits)
+        #     return val
 
-        self._model.forward = new_call
-
+        # self._model.forward = new_call
+        encoded_input['decoder_input_ids'] = encoded_input['input_ids'].clone()
         with torch.no_grad():
             generation_output = self._model.generate(
-                input_ids=encoded_input["input_ids"],
+                #input_ids=encoded_input["input_ids"],
+                **encoded_input,
                 generation_config=gen_config,
             )
 
-        self._model.forward = old_forward
+        # self._model.forward = old_forward
 
         s = generation_output.sequences[0]
         text = self._tokenizer.decode(
@@ -364,6 +365,13 @@ def get_huggingface_lm(
     elif model.startswith("Salesforce/codet5") and not model.endswith("b"):
         model_class = T5ForConditionalGeneration
     elif model.startswith("Salesforce/codet5p-") and model.endswith("b"):
+        model_class = AutoModelForSeq2SeqLM
+        _kwargs = {
+            "trust_remote_code": True,
+            "low_cpu_mem_usage": True,
+        }
+        precision = torch.float16
+    elif model == "Salesforce/instructcodet5p-16b":
         model_class = AutoModelForSeq2SeqLM
         _kwargs = {
             "trust_remote_code": True,

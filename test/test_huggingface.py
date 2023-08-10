@@ -51,8 +51,12 @@ def test_get_pytorch(lm):
     get_huggingface_lm(lm, runtime=Runtime.PYTORCH)
 
 def test_get_pytorch_instructcodet5p():
-    lm = "Salesforce/codegen25-7b-instruct"
-    get_huggingface_lm(lm, runtime=Runtime.PYTORCH)
+    lm = "Salesforce/instructcodet5p-16b"
+    prompt = LmPrompt("print('Hello world", max_tokens=15, cache=False, temperature=0)
+    lm1 = get_huggingface_lm(lm, runtime=Runtime.PYTORCH)
+    out1 = lm1.predict(prompt)
+    print(out1)
+    assert out1.completion_text
 
 @pytest.mark.parametrize("lm", ALL_MODELS)
 def test_get_ort_cpu(lm):
