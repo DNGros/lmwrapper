@@ -8,6 +8,7 @@ from typing import Union, List, Optional, Iterable
 import openai.error
 from lmwrapper.abstract_predictor import LmPredictor
 from lmwrapper.caching import get_disk_cache
+from lmwrapper.rate_limited import rate_limited
 from lmwrapper.secret_manage import SecretInterface, SecretFile, assert_is_a_secret, SecretEnvVar
 from lmwrapper.structs import LmPrompt, LmPrediction
 import bisect
@@ -102,7 +103,7 @@ class OpenAiLmChatPrediction(LmPrediction):
 class OpenAIPredictor(LmPredictor):
     def __init__(
         self,
-        api,
+        api: openai,
         engine_name: str,
         chat_mode: bool = None,
         cache_outputs_default: bool = False,
@@ -169,6 +170,7 @@ class OpenAIPredictor(LmPredictor):
         if PRINT_ON_PREDICT:
             print("RUN PREDICT ", prompt.text[:min(10, len(prompt.text))])
 
+        @rate_limited(25)
         def run_func():
             try:
                 if not self._chat_mode:
