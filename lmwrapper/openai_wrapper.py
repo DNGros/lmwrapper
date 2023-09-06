@@ -189,9 +189,7 @@ class OpenAIPredictor(LmPredictor):
         if PRINT_ON_PREDICT:
             print("RUN PREDICT ", prompt.text[: min(10, len(prompt.text))])
 
-        # @rate_limited(max_count=20, per=60)
         def run_func():
-            print("Waited:", rate_limit.wait())
             try:
                 if not self._chat_mode:
                     return self._api.Completion.create(
@@ -220,11 +218,6 @@ class OpenAIPredictor(LmPredictor):
                     )
             except openai.error.RateLimitError as e:
                 print(e)
-                # regex = r".*Limit: (\d+) / min\..*"
-                # matches = re.findall(regex, e._message)
-                # if matches:
-                #     count = int(matches[0])
-                #     rate_limit.update(max_count=count, per=60)
                 return e
 
         def is_success_func(result):
