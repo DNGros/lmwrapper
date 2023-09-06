@@ -190,6 +190,9 @@ class OpenAIPredictor(LmPredictor):
             print("RUN PREDICT ", prompt.text[: min(10, len(prompt.text))])
 
         def run_func():
+            # Wait for rate limit
+            rate_limit.wait()
+
             try:
                 if not self._chat_mode:
                     return self._api.Completion.create(
