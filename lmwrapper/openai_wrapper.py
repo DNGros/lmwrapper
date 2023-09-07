@@ -397,8 +397,6 @@ def get_open_ai_lm(
     if organization:
         openai.organization = organization
 
-    LmPredictor.configure_global_ratelimit(max_count=20, per=60)
-
     return OpenAIPredictor(
         api=openai,
         engine_name=model_name,

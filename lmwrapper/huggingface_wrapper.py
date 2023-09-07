@@ -168,24 +168,33 @@ class HuggingfacePrediction(LmPrediction):
 class TokenStoppingCriteria(StoppingCriteria):
     def __init__(
         self,
-        stop_sequences: list[list[str] | list[int]] = [],
+        stop_sequences: list[list[str]] = [],
         decode=False,
         tokenizer: PreTrainedTokenizerFast = None,
     ):
         super().__init__()
         self.tokenizer: PreTrainedTokenizerFast = tokenizer
-        self.stop_sequences = stop_sequences
-        self.max_stop_sequence_length = max(map(len, stop_sequences))
         self.decode = decode
+        assert all(
+            isinstance(stop_sequence, str) for stop_sequence in self.stop_sequences
+        )
+
         if decode:
-            assert all(
-                isinstance(stop_sequence, str) for stop_sequence in self.stop_sequences
-            )
             assert tokenizer
+            self.stop_sequences = stop_sequences
         else:
+            stop_tokens = self._tokenizer(
+                stop_sequences, add_special_tokens=False, return_attention_mask=False
+            )["input_ids"]
+            assert len(stop_tokens) == len(stop_sequences)
+
+            self.stop_sequences = stop_tokens
+
             assert all(
                 isinstance(stop_sequence, int) for stop_sequence in self.stop_sequences
             )
+
+            self.max_stop_sequence_length = max(map(len, stop_sequences))
 
     def __call__(
         self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
@@ -233,27 +242,20 @@ class HuggingfacePredictor(LmPredictor):
         self,
         prompt: LmPrompt,
     ) -> LmPrediction | list[LmPrediction]:
-        # if prompt.stop:
-        #     raise NotImplementedError
-        stopping_criteria = None
         if prompt.presence_penalty:
             raise NotImplementedError
-        if prompt.stop:
-            # TODO: move this assertion to the TokenStoppingCriteria?
-            stop_tokens = self._tokenizer(
-                prompt.stop, add_special_tokens=False, return_attention_mask=False
-            )["input_ids"]
-            assert len(stop_tokens) == len(prompt.stop)
 
+        stopping_criteria = None
+        if prompt.stop:
             stopping_criteria = [
                 TokenStoppingCriteria(
                     prompt.stop, decode=True, tokenizer=self._tokenizer
                 )
             ]
+
         temperature = prompt.temperature
         if temperature == 0:
             temperature = None
-        assert self._tokenizer.bos_token
 
         if prompt.text == "" and not prompt.add_bos_token:
             raise Exception(
@@ -261,6 +263,7 @@ class HuggingfacePredictor(LmPredictor):
             )
 
         if prompt.add_bos_token:
+            assert self._tokenizer.bos_token
             prompt_text = self._tokenizer.bos_token + prompt.text
         else:
             prompt_text = prompt.text
