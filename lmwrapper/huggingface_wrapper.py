@@ -22,9 +22,7 @@ try:
 
     assert version.parse(torch.__version__) >= version.parse("2.0")
 except ImportError:
-    msg = (
-        "Expect to work on torch. Please see https://pytorch.org/ for install info."
-    )
+    msg = "Expect to work on torch. Please see https://pytorch.org/ for install info."
     raise ImportError(
         msg,
     )
@@ -72,6 +70,7 @@ try:
         PreTrainedTokenizerFast,
         T5ForConditionalGeneration,
         set_seed,
+        StoppingCriteria,
     )
 
     set_seed(42)
@@ -166,6 +165,57 @@ class HuggingfacePrediction(LmPrediction):
         return self._tokens
 
 
+class TokenStoppingCriteria(StoppingCriteria):
+    def __init__(
+        self,
+        stop_sequences: list[list[str] | list[int]] = [],
+        decode=False,
+        tokenizer: PreTrainedTokenizerFast = None,
+    ):
+        super().__init__()
+        self.tokenizer: PreTrainedTokenizerFast = tokenizer
+        self.stop_sequences = stop_sequences
+        self.max_stop_sequence_length = max(map(len, stop_sequences))
+        self.decode = decode
+        if decode:
+            assert all(
+                isinstance(stop_sequence, str) for stop_sequence in self.stop_sequences
+            )
+            assert tokenizer
+        else:
+            assert all(
+                isinstance(stop_sequence, int) for stop_sequence in self.stop_sequences
+            )
+
+    def __call__(
+        self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
+    ) -> bool:
+        assert input_ids.shape[0] == 1
+        input_ids_list: list[int] = input_ids[0].tolist()
+        if self.decode:
+            # We can decode the string and do string matching
+            decoded_output = self.tokenizer.decode(input_ids_list)
+
+            return any(
+                stop_sequence in decoded_output for stop_sequence in self.stop_sequences
+            )
+        else:
+            # Or we can scan the end of the id sequence
+            if self.max_stop_sequence_length > len(input_ids_list):
+                span = len(input_ids_list)
+            else:
+                span = self.max_stop_sequence_length
+            input_ids_interest = input_ids_list[-span:]
+
+            return any(
+                any(
+                    input_ids_interest[i : i + len(stop_sequence)] == stop_sequence
+                    for i in range(len(input_ids_interest) - len(stop_sequence) + 1)
+                )
+                for stop_sequence in self.stop_sequences
+            )
+
+
 class HuggingfacePredictor(LmPredictor):
     def __init__(
         self,
@@ -183,17 +233,39 @@ class HuggingfacePredictor(LmPredictor):
         self,
         prompt: LmPrompt,
     ) -> LmPrediction | list[LmPrediction]:
-        if prompt.stop:
-            raise NotImplementedError
+        # if prompt.stop:
+        #     raise NotImplementedError
+        stopping_criteria = None
         if prompt.presence_penalty:
             raise NotImplementedError
+        if prompt.stop:
+            stop_tokens = self._tokenizer(
+                prompt.stop, add_special_tokens=False, return_attention_mask=False
+            )["input_ids"]
+            assert len(stop_tokens) == len(prompt.stop)
+
+            stopping_criteria = [
+                TokenStoppingCriteria(
+                    prompt.stop, decode=True, tokenizer=self._tokenizer
+                )
+            ]
         temperature = prompt.temperature
         if temperature == 0:
             temperature = None
         assert self._tokenizer.bos_token
 
+        if prompt.text == "" and not prompt.add_bos_token:
+            raise Exception(
+                "Cannot do unconditional generation without `add_bos_token`."
+            )
+
+        if prompt.add_bos_token:
+            prompt_text = self._tokenizer.bos_token + prompt.text
+        else:
+            prompt_text = prompt.text
+
         encoded_input = self._tokenizer(
-            self._tokenizer.bos_token + prompt.text,
+            prompt_text,
             return_tensors="pt",
         ).to(
             self._device,
@@ -243,6 +315,7 @@ class HuggingfacePredictor(LmPredictor):
                 # TODO: some models require an attention mask, others not?
                 # **encoded_input
                 generation_config=gen_config,
+                stopping_criteria=stopping_criteria,
             )
 
         self._model.forward = old_forward
@@ -553,8 +626,6 @@ def _warmup_model(predictor: HuggingfacePredictor):
     small_prompt = LmPrompt("!", cache=False, temperature=0)
     predictor.predict(small_prompt)
 
-    long_prompt_str = (
-        "hello world" * predictor.get_model_max_length()
-    )
+    long_prompt_str = "hello world" * predictor.get_model_max_length()
     long_prompt = LmPrompt(long_prompt_str, cache=False, temperature=0)
     predictor.predict(long_prompt)

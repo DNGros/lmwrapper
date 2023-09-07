@@ -1,8 +1,8 @@
 from abc import abstractmethod
-from typing import Union, Dict, List
+from typing import Optional, Union, Dict, List
 from lmwrapper.caching import get_disk_cache
 from lmwrapper.structs import LmPrompt, LmPrediction
-
+from ratemate import RateLimit
 
 disk_cache = get_disk_cache()
 
@@ -17,11 +17,22 @@ def _predict_definately_cached(
 
 
 class LmPredictor:
+    _rate_limit: Optional[RateLimit] = None
+
     def __init__(
         self,
         cache_default: bool = False,
     ):
         self._cache_default = cache_default
+
+    def configure_global_ratelimit(max_count=1, per=1, greedy=False) -> None:
+        _rate_limit = RateLimit(max_count=max_count, per=per, greedy=greedy)
+
+    def _wait_ratelimit() -> float:
+        if LmPredictor._rate_limit:
+            return LmPredictor._rate_limit.wait()
+
+        return 0.
 
     def predict(
         self,

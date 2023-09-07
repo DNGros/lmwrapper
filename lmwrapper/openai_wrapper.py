@@ -28,7 +28,7 @@ PRINT_ON_PREDICT = False
 
 MAX_LOG_PROB_PARM = 5
 
-rate_limit = RateLimit(max_count=20, per=60, greedy=False)
+# rate_limit = RateLimit(max_count=20, per=60, greedy=False)
 
 class OpenAiLmPrediction(LmPrediction):
     def _get_completion_token_index(self):
@@ -191,7 +191,7 @@ class OpenAIPredictor(LmPredictor):
 
         def run_func():
             # Wait for rate limit
-            rate_limit.wait()
+            LmPredictor._wait_ratelimit()
 
             try:
                 if not self._chat_mode:
@@ -396,6 +396,9 @@ def get_open_ai_lm(
     openai.api_key = api_key_secret.get_secret().strip()
     if organization:
         openai.organization = organization
+
+    LmPredictor.configure_global_ratelimit(max_count=20, per=60)
+
     return OpenAIPredictor(
         api=openai,
         engine_name=model_name,

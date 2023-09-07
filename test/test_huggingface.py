@@ -29,6 +29,64 @@ BIG_MODELS = BIG_SEQ2SEQ_MODELS | BIG_CAUSAL_MODELS
 ALL_MODELS = SEQ2SEQ_MODELS | CAUSAL_MODELS | BIG_MODELS
 
 
+def test_stop_tokens():
+    # Load model
+    lm = get_huggingface_lm(Models.DistilGPT2, runtime=Runtime.PYTORCH)
+
+    # Let's make sure we get a stop token in our prompt normally
+    prompt = LmPrompt(
+        "place a newline here",
+        max_tokens=15,
+        cache=False,
+        temperature=0,
+    )
+    out = lm.predict(prompt)
+    assert "\n\n" in out.completion_text
+
+    # Now let's try with one character
+    prompt = LmPrompt(
+        "place a newline here",
+        max_tokens=15,
+        cache=False,
+        temperature=0,
+        stop=["\n"],
+    )
+    out = lm.predict(prompt)
+    assert "\n\n" not in out.completion_text
+
+    # Now with two
+    prompt = LmPrompt(
+        "place a newline here",
+        max_tokens=15,
+        cache=False,
+        temperature=0,
+        stop=["\n\n"],
+    )
+    out = lm.predict(prompt)
+    assert "\n\n\n" not in out.completion_text
+
+    # Now let's try with a sequence longer than the input
+    prompt = LmPrompt(
+        "place a newline here",
+        max_tokens=15,
+        cache=False,
+        temperature=0,
+        stop=["\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"],
+    )
+    out = lm.predict(prompt)
+    assert "\n\n\n" in out.completion_text
+
+    # Now let's try multiple
+    prompt = LmPrompt(
+        "place a newline here",
+        max_tokens=15,
+        cache=False,
+        temperature=0,
+        stop=["\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n", "blah", "\n"],
+    )
+    out = lm.predict(prompt)
+    assert "\n\n\n" not in out.completion_text
+
 def test_distilgpt2_pytorch_runtime():
     prompt = LmPrompt(
         "print('Hello world",
