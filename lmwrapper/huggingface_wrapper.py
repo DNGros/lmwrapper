@@ -165,7 +165,7 @@ class HuggingfacePrediction(LmPrediction):
         return self._tokens
 
 
-class TokenStoppingCriteria(StoppingCriteria):
+class _TokenStoppingCriteria(StoppingCriteria):
     def __init__(
         self,
         stop_sequences: list[list[str]] = [],
@@ -199,7 +199,9 @@ class TokenStoppingCriteria(StoppingCriteria):
     def __call__(
         self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
     ) -> bool:
-        assert input_ids.shape[0] == 1
+        if input_ids.shape[0] != 1:
+            raise NotImplementedError("Batches greater than size 1 are not supported.")
+
         input_ids_list: list[int] = input_ids[0].tolist()
         if self.decode:
             # We can decode the string and do string matching
@@ -242,13 +244,16 @@ class HuggingfacePredictor(LmPredictor):
         self,
         prompt: LmPrompt,
     ) -> LmPrediction | list[LmPrediction]:
+        if not isinstance(prompt.text, str) and len(prompt.text) != 1:
+            raise NotImplementedError("Prompt batches other than size 1 are not supported.")
+
         if prompt.presence_penalty:
             raise NotImplementedError
 
         stopping_criteria = None
         if prompt.stop:
             stopping_criteria = [
-                TokenStoppingCriteria(
+                _TokenStoppingCriteria(
                     prompt.stop, decode=True, tokenizer=self._tokenizer
                 )
             ]
@@ -326,6 +331,15 @@ class HuggingfacePredictor(LmPredictor):
 
         s = generation_output.sequences[0]
         text = self._tokenizer.decode(s[len(encoded_input["input_ids"][0]) :])
+
+        if prompt.stop:
+            sorted_stop_sequences = sorted(prompt.stop, key=len, reverse=True)
+            for stop_sequence in sorted_stop_sequences:
+                if text.endswith(stop_sequence):
+                    text = text[:-len(stop_sequence)]
+            rencoded = self._tokenizer.encode(text, add_special_tokens=False)
+            s = s[:-len(rencoded)]
+
         tokens = self._tokenizer.convert_ids_to_tokens(s)
 
         # strip the bos token
@@ -334,6 +348,9 @@ class HuggingfacePredictor(LmPredictor):
         # Calculate the logprobs if needed
         if need_log_prob:
             all_logits = torch.cat(cached_logits, dim=1)
+            if prompt.stop:
+                all_logits = all_logits[:,:len(tokens)]
+
             assert all_logits.shape[0] == 1  # batch
             assert all_logits.shape[1] == len(tokens)
             logprobs = _gather_logprobs_from_logits(

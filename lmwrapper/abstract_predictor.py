@@ -25,8 +25,13 @@ class LmPredictor:
     ):
         self._cache_default = cache_default
 
-    def configure_global_ratelimit(max_count=1, per=1, greedy=False) -> None:
-        LmPredictor._rate_limit = RateLimit(max_count=max_count, per=per, greedy=greedy)
+    def configure_global_ratelimit(max_count=1, per_seconds=1, greedy=False) -> None:
+        """
+        Configure global ratelimiting, max tries per given seconds
+        If greedy is set to true, requests will be made without time inbetween,
+        followed by a long wait. Otherwise, requests are evenly spaced.
+        """
+        LmPredictor._rate_limit = RateLimit(max_count=max_count, per=per_seconds, greedy=greedy)
         return LmPredictor._rate_limit
 
     def _wait_ratelimit() -> float:
