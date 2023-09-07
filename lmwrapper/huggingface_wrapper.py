@@ -176,7 +176,7 @@ class TokenStoppingCriteria(StoppingCriteria):
         self.tokenizer: PreTrainedTokenizerFast = tokenizer
         self.decode = decode
         assert all(
-            isinstance(stop_sequence, str) for stop_sequence in self.stop_sequences
+            isinstance(stop_sequence, str) for stop_sequence in stop_sequences
         )
 
         if decode:
