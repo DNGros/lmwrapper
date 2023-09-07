@@ -26,7 +26,8 @@ class LmPredictor:
         self._cache_default = cache_default
 
     def configure_global_ratelimit(max_count=1, per=1, greedy=False) -> None:
-        _rate_limit = RateLimit(max_count=max_count, per=per, greedy=greedy)
+        LmPredictor._rate_limit = RateLimit(max_count=max_count, per=per, greedy=greedy)
+        return LmPredictor._rate_limit
 
     def _wait_ratelimit() -> float:
         if LmPredictor._rate_limit:

@@ -239,6 +239,7 @@ class HuggingfacePredictor(LmPredictor):
         if prompt.presence_penalty:
             raise NotImplementedError
         if prompt.stop:
+            # TODO: move this assertion to the TokenStoppingCriteria?
             stop_tokens = self._tokenizer(
                 prompt.stop, add_special_tokens=False, return_attention_mask=False
             )["input_ids"]
