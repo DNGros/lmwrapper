@@ -15,6 +15,7 @@ LM_CHAT_DIALOG_COERCIBLE_TYPES = Union[
 class LmPrompt:
     text: Union[str, LM_CHAT_DIALOG_COERCIBLE_TYPES]
     max_tokens: int
+    patch_model_forward: bool = False
     stop: List[str] = None
     logprobs: int = 1
     """Include the log probabilities on the logprobs most likely tokens, as well the chosen tokens.

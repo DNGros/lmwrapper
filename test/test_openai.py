@@ -1,10 +1,12 @@
 import math
+from pathlib import Path
 import warnings
 
 import pytest
 
 from lmwrapper.caching import clear_cache_dir
 from lmwrapper.openai_wrapper import OpenAIPredictor, get_open_ai_lm, OpenAiModelNames
+from lmwrapper.secret_manage import SecretFile
 from lmwrapper.structs import LmPrompt, LmChatDialog
 
 
@@ -88,6 +90,23 @@ def test_simple_chat_mode_multiturn():
     )
     assert out.completion_text.strip() == "5"
 
+def test_logprob():
+    import openai
+    openai.api_key = SecretFile(Path("~/oai_key.txt").expanduser()).get_secret().strip()
+
+    response = openai.Completion.create(
+      model="text-davinci-003",
+      prompt="What is the sentiment of 'hello world'?",
+      temperature=0,
+      max_tokens=1,
+      logprobs=5,
+    )
+    choices = response["choices"]
+    import pandas as pd
+    df = pd.DataFrame(response["choices"][0]["logprobs"])
+    print(df)
+    print(choices)
+    pass
 
 def test_ratelimit():
     OpenAIPredictor.configure_global_ratelimit(1, per_seconds=2)

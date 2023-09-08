@@ -6,6 +6,7 @@ from importlib.metadata import version as import_version
 from pathlib import Path
 from typing import Any
 import logging
+import numpy as np
 
 from packaging import version
 
@@ -57,6 +58,7 @@ except ImportError:
 
 try:
     import transformers
+    from accelerate import load_checkpoint_and_dispatch
 
     assert version.parse(transformers.__version__) >= version.parse("4.31.0")
 
@@ -83,6 +85,7 @@ except ImportError:
     raise ImportError(
         msg,
     )
+
 
 if _ONNX_RUNTIME:
     try:
@@ -175,9 +178,7 @@ class _TokenStoppingCriteria(StoppingCriteria):
         super().__init__()
         self.tokenizer: PreTrainedTokenizerFast = tokenizer
         self.decode = decode
-        assert all(
-            isinstance(stop_sequence, str) for stop_sequence in stop_sequences
-        )
+        assert all(isinstance(stop_sequence, str) for stop_sequence in stop_sequences)
 
         if decode:
             assert tokenizer
@@ -245,7 +246,9 @@ class HuggingfacePredictor(LmPredictor):
         prompt: LmPrompt,
     ) -> LmPrediction | list[LmPrediction]:
         if not isinstance(prompt.text, str) and len(prompt.text) != 1:
-            raise NotImplementedError("Prompt batches other than size 1 are not supported.")
+            raise NotImplementedError(
+                "Prompt batches other than size 1 are not supported."
+            )
 
         if prompt.presence_penalty:
             raise NotImplementedError
@@ -282,10 +285,14 @@ class HuggingfacePredictor(LmPredictor):
 
         # ONNX models themselves cannot be moved to a device
         # but their input tensors must be moved to GPU
-        if not _ONNX_RUNTIME or not isinstance(self._model, ORTModel):
-            self._model.to(self._device)  # Ensure model is on device
+        # if not _ONNX_RUNTIME or not isinstance(self._model, ORTModel):
+        #     self._model.to(self._device)  # Ensure model is on device
 
         need_log_prob = prompt.logprobs is not None and prompt.logprobs > 0
+
+        pad_token_id = (
+            self._tokenizer.pad_token_id if self._tokenizer.pad_token_id else 0
+        )
 
         # Ref https://gist.github.com/kinoc/8a042d8c5683725aa8c372274c02ea2f
         gen_config = GenerationConfig(
@@ -295,7 +302,7 @@ class HuggingfacePredictor(LmPredictor):
             do_sample=prompt.temperature > 0,
             return_dict_in_generate=True,
             output_scores=need_log_prob,
-            pad_token_id=self._tokenizer.pad_token_id,
+            pad_token_id=pad_token_id,
             eos_token_id=self._tokenizer.eos_token_id,
             bos_token_id=self._tokenizer.bos_token_id,
         )
@@ -307,57 +314,98 @@ class HuggingfacePredictor(LmPredictor):
         #   require calling the model again https://discuss.huggingface.co/t/announcement-generation-get-probabilities-for-generated-output/30075/17
         # Instead we are going to patch the model forward to log calls
 
-        old_forward = self._model.forward
-        cached_logits = []
+        if prompt.patch_model_forward:
+            old_forward = self._model.forward
+            cached_logits = []
 
-        def new_call(*args, **kwargs):
-            nonlocal cached_logits
-            val = old_forward(*args, **kwargs)
-            cached_logits.append(val.logits)
-            return val
+            def new_call(*args, **kwargs):
+                nonlocal cached_logits
+                val = old_forward(*args, **kwargs)
+                cached_logits.append(val.logits)
+                return val
 
-        self._model.forward = new_call
+            self._model.forward = new_call
 
         with torch.no_grad():
             generation_output = self._model.generate(
-                input_ids=encoded_input["input_ids"],
+                input_ids=encoded_input.input_ids,
                 # TODO: some models require an attention mask, others not?
                 # **encoded_input
                 generation_config=gen_config,
                 stopping_criteria=stopping_criteria,
             )
 
-        self._model.forward = old_forward
+        if prompt.patch_model_forward:
+            self._model.forward = old_forward
 
-        s = generation_output.sequences[0]
-        text = self._tokenizer.decode(s[len(encoded_input["input_ids"][0]) :])
+        output_sequence = generation_output.sequences[0]
+        text = self._tokenizer.decode(
+            output_sequence[encoded_input.input_ids.shape[1] :]
+        )
 
         if prompt.stop:
             sorted_stop_sequences = sorted(prompt.stop, key=len, reverse=True)
             for stop_sequence in sorted_stop_sequences:
                 if text.endswith(stop_sequence):
-                    text = text[:-len(stop_sequence)]
+                    text = text[: -len(stop_sequence)]
             rencoded = self._tokenizer.encode(text, add_special_tokens=False)
-            s = s[:-len(rencoded)]
+            output_sequence = output_sequence[: -len(rencoded)]
 
-        tokens = self._tokenizer.convert_ids_to_tokens(s)
+        tokens = self._tokenizer.convert_ids_to_tokens(output_sequence)
 
         # strip the bos token
-        tokens = tokens[1:]
+        if prompt.add_bos_token:
+            tokens = tokens[1:]
+            # output_sequence = output_sequence[1:]
 
         # Calculate the logprobs if needed
         if need_log_prob:
-            all_logits = torch.cat(cached_logits, dim=1)
-            if prompt.stop:
-                all_logits = all_logits[:,:len(tokens)]
-
-            assert all_logits.shape[0] == 1  # batch
-            assert all_logits.shape[1] == len(tokens)
-            logprobs = _gather_logprobs_from_logits(
-                all_logits[0],
-                s[1:],
+            # input_length is the length of the input prompt for decoder-only models, like the GPT family, and 1 for
+                # encoder-decoder models, like BART or T5.
+            input_length = (
+                1
+                if self._model.config.is_encoder_decoder
+                else encoded_input.input_ids.shape[1]
             )
-            assert len(logprobs) == len(tokens)
+
+            for tok in output_sequence:
+                print(repr(self._tokenizer.decode(tok)))
+
+            if prompt.patch_model_forward:
+                all_logits = torch.cat(cached_logits, dim=1)
+                if prompt.stop:
+                    all_logits = all_logits[:, : len(tokens)]
+
+                assert all_logits.shape[0] == 1  # batch
+                assert all_logits.shape[1] == len(tokens)
+                logprobs = _gather_logprobs_from_logits(
+                    all_logits[0],
+                    output_sequence[1:],
+                )
+                assert len(logprobs) == len(tokens)
+                print("Raw logits:")
+                print("| token | token string | logits | probability")
+                just_output = output_sequence[input_length:]
+                just_output_logprobs = logprobs[input_length-1:]
+                logprobs = just_output_logprobs
+                for tok, score in zip(just_output, just_output_logprobs, strict=True):
+                    print(
+                        f"| {tok:5d} | {repr(self._tokenizer.decode(tok)):8s} | {score.numpy():.3f} | {np.exp(score.numpy()):.2%}"
+                    )
+            else:
+                logprobs = self._model.compute_transition_scores(
+                    generation_output.sequences,
+                    generation_output.scores,
+                    normalize_logits=True,
+                )[0]
+
+                generated_tokens = output_sequence[input_length:]
+                print("Transition scores:")
+                print("| token | token string | logits | probability")
+                for tok, score in zip(generated_tokens, logprobs, strict=True):
+                    print(
+                        f"| {tok:5d} | {repr(self._tokenizer.decode(tok)):8s} | {score.numpy():.3f} | {np.exp(score.numpy()):.2%}"
+                    )
         else:
             logprobs = None
 
@@ -368,13 +416,39 @@ class HuggingfacePredictor(LmPredictor):
             text = ""
             generation_output.sequences = generation_output.sequences[:, :-1]
 
+        ###
+
+        # print("Transition Scores:")
+        # for tok, score in zip(generated_tokens[0], transition_scores[0]):
+        #     print(
+        #         f"| {tok:5d} | {repr(self._tokenizer.decode(tok)):8s} | {score.numpy():.3f} | {np.exp(score.numpy()):.2%}"
+        #     )
+
+        # completion_logprobs = logprobs[input_length-1:]
+        # print("\nLogprobs from logits:")
+        # assert len(completion_logprobs) == len(generated_tokens[0])
+        # print("| token | token string | logits | probability")
+        # for tok, score in zip(generated_tokens[0], completion_logprobs):
+        #     # | token | token string | logits | probability
+        #     print(
+        #         f"| {tok:5d} | {repr(self._tokenizer.decode(tok)):8s} | {score.numpy():.3f} | {np.exp(score.numpy()):.2%}"
+        #     )
+        # If you sum the generated tokens' scores and apply the length penalty, you'll get the sequence scores.
+        # Tip: recomputing the scores is only guaranteed to match with `normalize_logits=False`. Depending on the
+        # use case, you might want to recompute it with `normalize_logits=True`.
+        # output_length = input_length + np.sum(transition_scores.numpy() < 0, axis=1)
+        # length_penalty = model.generation_config.length_penalty
+        # reconstructed_scores = transition_scores.sum(axis=1) / (output_length**length_penalty)
+        # print(np.allclose(outputs.sequences_scores, reconstructed_scores))
+        ###
+
         return HuggingfacePrediction(
             completion_text=text,
             prompt=prompt,
             metad=generation_output,
-            _prompt_encoding=encoded_input,
+            _prompt_encoding=encoded_input.to("cpu"),
             _tokens=tokens,
-            _log_probs=logprobs,
+            _log_probs=logprobs.detach().cpu().numpy(),
         )
 
     def get_model_max_length(self) -> int:

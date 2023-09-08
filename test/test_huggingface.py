@@ -1,3 +1,6 @@
+import math
+
+import numpy as np
 from lmwrapper.util import StrEnum
 
 import pytest
@@ -27,6 +30,35 @@ BIG_SEQ2SEQ_MODELS = {Models.CodeT5plus_6B, Models.InstructCodeT5plus_16B}
 BIG_CAUSAL_MODELS = {Models.CodeGen2_3_7B}
 BIG_MODELS = BIG_SEQ2SEQ_MODELS | BIG_CAUSAL_MODELS
 ALL_MODELS = SEQ2SEQ_MODELS | CAUSAL_MODELS | BIG_MODELS
+
+
+def test_logprobs_codegen2():
+    lm = get_huggingface_lm(Models.CodeGen2_1B, runtime=Runtime.PYTORCH)
+    prompt = LmPrompt(
+        "def hello_world():\n   print('",
+        max_tokens=15,
+        cache=False,
+        temperature=0,
+    )
+    outa = lm.predict(prompt)
+    np_logprobsa = np.array(outa.completion_logprobs)
+    expa = np.exp(np_logprobsa)
+    meana = expa.mean()
+
+    prompt = LmPrompt(
+        "def hello_world():\n   print('",
+        max_tokens=15,
+        cache=False,
+        temperature=0,
+        patch_model_forward=True
+    )
+    outb = lm.predict(prompt)
+    np_logprobsb = np.array(outb.completion_logprobs)
+    expb = np.exp(np_logprobsb)
+    meanb = expb.mean()
+
+    assert np.allclose(np_logprobsa, np_logprobsb, atol=0.001, rtol=0.001)
+
 
 
 def test_stop_token_removal():
