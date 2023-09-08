@@ -297,9 +297,9 @@ class HuggingfacePredictor(LmPredictor):
         # Ref https://gist.github.com/kinoc/8a042d8c5683725aa8c372274c02ea2f
         gen_config = GenerationConfig(
             max_new_tokens=prompt.max_tokens,
-            temperature=temperature,
-            top_p=prompt.top_p,
-            do_sample=prompt.temperature > 0,
+            # temperature=temperature,
+            # top_p=prompt.top_p,
+            # do_sample=prompt.temperature > 0,
             return_dict_in_generate=True,
             output_scores=need_log_prob,
             pad_token_id=pad_token_id,
@@ -594,7 +594,7 @@ def _initialize_hf_model(
             torch_dtype=precision,
             device_map="auto",
             **_kwargs,
-        ).to(torch_device)
+        )#.to(torch_device)
     elif runtime == Runtime.ORT_CPU:
         if torch_device.type != "cpu":
             logging.warn(
