@@ -331,10 +331,10 @@ class HuggingfacePredictor(LmPredictor):
             for tok, score in zip(generated_sequence, logprobs, strict=True):
                 logprobs_dicts.append(
                     {
-                        "token": int(tok.numpy()),
+                        "token": int(tok.detach().cpu()),
                         "repr": repr(self._tokenizer.decode(tok)),
                         "logit": float(score.item()),
-                        "probability": float(np.exp(score.numpy())),
+                        "probability": float(np.exp(score.detach().cpu())),
                     }
                 )
         else:
