@@ -188,8 +188,8 @@ class HuggingfacePredictor(LmPredictor):
 
         # ONNX models themselves cannot be moved to a device
         # but their input tensors must be moved to GPU
-        if not _ONNX_RUNTIME or not isinstance(self._model, ORTModel):
-            self._model.to(self._device)  # Ensure model is on device
+        # if not _ONNX_RUNTIME or not isinstance(self._model, ORTModel):
+        #     self._model.to(self._device)  # Ensure model is on device
 
         need_log_prob = prompt.logprobs is not None and prompt.logprobs > 0
 
