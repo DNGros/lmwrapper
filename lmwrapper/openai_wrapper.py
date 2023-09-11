@@ -115,7 +115,7 @@ class OpenAiLmPrediction(LmPrediction):
                 "probability": logprob,
                 "score": np.e**logprob, # convert logprob back to a probability
             })
-        return self._logprobs_dict
+        return oai_logprobs
 
 
 class OpenAiLmChatPrediction(LmPrediction):
