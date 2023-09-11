@@ -1,14 +1,14 @@
 import os
-from dataclasses import dataclass
 from enum import Enum
 from functools import cached_property
 from importlib.metadata import version as import_version
 from pathlib import Path
-from typing import Any
 import logging
 import numpy as np
 
 from packaging import version
+from lmwrapper.HuggingfacePrediction import HuggingfacePrediction
+from lmwrapper._TokenStoppingCriteria import _TokenStoppingCriteria
 
 from lmwrapper.abstract_predictor import LmPredictor
 from lmwrapper.structs import LmPrediction, LmPrompt
@@ -72,7 +72,6 @@ try:
         PreTrainedTokenizerFast,
         T5ForConditionalGeneration,
         set_seed,
-        StoppingCriteria,
     )
 
     set_seed(42)
@@ -125,107 +124,11 @@ if _ONNX_RUNTIME:
 
 class Runtime(Enum):
     PYTORCH = 1
-    ORT_CUDA = 2
-    ORT_TENSORRT = 3
-    ORT_CPU = 4
-    BETTER_TRANSFORMER = 5
-
-
-@dataclass
-class HuggingfacePrediction(LmPrediction):
-    _prompt_encoding: Any
-    _tokens: Any
-    _log_probs: Any
-
-    def __post_init__(self):
-        assert len(self._prompt_encoding["input_ids"]) == 1
-        self._num_prompt_tokens = len(self._prompt_encoding["input_ids"][0])
-        if self.prompt.add_bos_token:
-            self._num_prompt_tokens -= 1
-
-    @property
-    def completion_tokens(self) -> list[str]:
-        return self._tokens[self._num_prompt_tokens :]
-
-    @property
-    def completion_logprobs(self) -> list[float]:
-        self._verify_logprobs()
-        return self._log_probs[self._num_prompt_tokens :]
-
-    @property
-    def prompt_tokens(self):
-        return self._tokens[: self._num_prompt_tokens]
-
-    @property
-    def prompt_logprobs(self):
-        return self._log_probs[: self._num_prompt_tokens]
-
-    @property
-    def full_logprobs(self):
-        return self._log_probs
-
-    def get_full_tokens(self):
-        return self._tokens
-
-
-class _TokenStoppingCriteria(StoppingCriteria):
-    def __init__(
-        self,
-        stop_sequences: list[list[str]] = [],
-        decode=False,
-        tokenizer: PreTrainedTokenizerFast = None,
-    ):
-        super().__init__()
-        self.tokenizer: PreTrainedTokenizerFast = tokenizer
-        self.decode = decode
-        assert all(isinstance(stop_sequence, str) for stop_sequence in stop_sequences)
-
-        if decode:
-            assert tokenizer
-            self.stop_sequences = stop_sequences
-        else:
-            stop_tokens = self._tokenizer(
-                stop_sequences, add_special_tokens=False, return_attention_mask=False
-            )["input_ids"]
-            assert len(stop_tokens) == len(stop_sequences)
-
-            self.stop_sequences = stop_tokens
-
-            assert all(
-                isinstance(stop_sequence, int) for stop_sequence in self.stop_sequences
-            )
-
-            self.max_stop_sequence_length = max(map(len, stop_sequences))
-
-    def __call__(
-        self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
-    ) -> bool:
-        if input_ids.shape[0] != 1:
-            raise NotImplementedError("Batches greater than size 1 are not supported.")
-
-        input_ids_list: list[int] = input_ids[0].tolist()
-        if self.decode:
-            # We can decode the string and do string matching
-            decoded_output = self.tokenizer.decode(input_ids_list)
-
-            return any(
-                stop_sequence in decoded_output for stop_sequence in self.stop_sequences
-            )
-        else:
-            # Or we can scan the end of the id sequence
-            if self.max_stop_sequence_length > len(input_ids_list):
-                span = len(input_ids_list)
-            else:
-                span = self.max_stop_sequence_length
-            input_ids_interest = input_ids_list[-span:]
-
-            return any(
-                any(
-                    input_ids_interest[i : i + len(stop_sequence)] == stop_sequence
-                    for i in range(len(input_ids_interest) - len(stop_sequence) + 1)
-                )
-                for stop_sequence in self.stop_sequences
-            )
+    ACCELERATE = 2
+    ORT_CUDA = 3
+    ORT_TENSORRT = 4
+    ORT_CPU = 5
+    BETTER_TRANSFORMER = 6
 
 
 class HuggingfacePredictor(LmPredictor):
@@ -285,8 +188,8 @@ class HuggingfacePredictor(LmPredictor):
 
         # ONNX models themselves cannot be moved to a device
         # but their input tensors must be moved to GPU
-        # if not _ONNX_RUNTIME or not isinstance(self._model, ORTModel):
-        #     self._model.to(self._device)  # Ensure model is on device
+        if not _ONNX_RUNTIME or not isinstance(self._model, ORTModel):
+            self._model.to(self._device)  # Ensure model is on device
 
         need_log_prob = prompt.logprobs is not None and prompt.logprobs > 0
 
@@ -339,116 +242,119 @@ class HuggingfacePredictor(LmPredictor):
             self._model.forward = old_forward
 
         output_sequence = generation_output.sequences[0]
-        text = self._tokenizer.decode(
-            output_sequence[encoded_input.input_ids.shape[1] :]
+
+        # Full output text
+        # output_text = self._tokenizer.decode(output_sequence)
+
+        # input_length is the length of the input prompt for decoder-only models,
+        # like the GPT family, and 1 for encoder-decoder models, like BART or T5.
+        input_length = (
+            1
+            if self._model.config.is_encoder_decoder
+            else encoded_input.input_ids.shape[1]
         )
+
+        generated_sequence = output_sequence[input_length:]
+        generated_text = self._tokenizer.decode(generated_sequence)
+
+        delta = None
 
         if prompt.stop:
             sorted_stop_sequences = sorted(prompt.stop, key=len, reverse=True)
+            stop_idx = len(generated_sequence)
             for stop_sequence in sorted_stop_sequences:
-                if text.endswith(stop_sequence):
-                    text = text[: -len(stop_sequence)]
-            rencoded = self._tokenizer.encode(text, add_special_tokens=False)
-            output_sequence = output_sequence[: -len(rencoded)]
+                if generated_text.endswith(stop_sequence):
+                    generated_text = generated_text[: -len(stop_sequence)]
+                    # delta = 0
+                    # while stop_sequence[0] in self._tokenizer.decode(generated_sequence):
+                    #     generated_sequence = generated_sequence[:-1]
+                    #     delta -= 1
+                    # stop_idx = 0
+                    for idx, token_id in reversed(list(enumerate(generated_sequence))):
+                        decoded_tkn = self._tokenizer.decode(token_id)
+                        # print(idx, token_id, repr(decoded_tkn))
+                        if stop_sequence in decoded_tkn:
+                            stop_idx = idx-1
+                            break
+            rencoded = self._tokenizer.encode(generated_text, add_special_tokens=False)
+            delta = -(len(generated_sequence) - len(rencoded))
 
-        tokens = self._tokenizer.convert_ids_to_tokens(output_sequence)
+            # delta = -(len(generated_sequence) - stop_idx)
+            if delta == 0:
+                delta = None
+            else:
+                assert delta < 0
 
-        # strip the bos token
-        if prompt.add_bos_token:
-            tokens = tokens[1:]
-            # output_sequence = output_sequence[1:]
+            output_sequence = output_sequence[:delta]
+            generated_sequence = output_sequence[input_length:]
+            # generated_text = self._tokenizer.decode(generated_sequence)
+
+            # generated_text = self._tokenizer.decode(generated_sequence)
+
+        output_tokens = self._tokenizer.convert_ids_to_tokens(output_sequence)
 
         # Calculate the logprobs if needed
         if need_log_prob:
-            # input_length is the length of the input prompt for decoder-only models, like the GPT family, and 1 for
-                # encoder-decoder models, like BART or T5.
-            input_length = (
-                1
-                if self._model.config.is_encoder_decoder
-                else encoded_input.input_ids.shape[1]
-            )
-
-            for tok in output_sequence:
-                print(repr(self._tokenizer.decode(tok)))
-
             if prompt.patch_model_forward:
-                all_logits = torch.cat(cached_logits, dim=1)
-                if prompt.stop:
-                    all_logits = all_logits[:, : len(tokens)]
+                all_logits = torch.cat(cached_logits, dim=1)[:, :delta]
+                # if prompt.stop:
+                #     all_logits = all_logits[:, : len(tokens)]
 
                 assert all_logits.shape[0] == 1  # batch
-                assert all_logits.shape[1] == len(tokens)
+                assert all_logits.shape[1] == len(output_tokens[1:])
                 logprobs = _gather_logprobs_from_logits(
                     all_logits[0],
                     output_sequence[1:],
                 )
-                assert len(logprobs) == len(tokens)
-                print("Raw logits:")
-                print("| token | token string | logits | probability")
-                just_output = output_sequence[input_length:]
-                just_output_logprobs = logprobs[input_length-1:]
-                logprobs = just_output_logprobs
-                for tok, score in zip(just_output, just_output_logprobs, strict=True):
-                    print(
-                        f"| {tok:5d} | {repr(self._tokenizer.decode(tok)):8s} | {score.numpy():.3f} | {np.exp(score.numpy()):.2%}"
-                    )
+                # assert len(logprobs) == len(output_tokens[1:])
+                # print("Raw logits:")
+                # print("| token | token string | logits | probability")
+                logprobs = logprobs[input_length-1 :]
             else:
-                logprobs = self._model.compute_transition_scores(
+                transition_scores = self._model.compute_transition_scores(
                     generation_output.sequences,
                     generation_output.scores,
                     normalize_logits=True,
                 )[0]
 
-                generated_tokens = output_sequence[input_length:]
-                print("Transition scores:")
-                print("| token | token string | logits | probability")
-                for tok, score in zip(generated_tokens, logprobs, strict=True):
-                    print(
-                        f"| {tok:5d} | {repr(self._tokenizer.decode(tok)):8s} | {score.numpy():.3f} | {np.exp(score.numpy()):.2%}"
-                    )
+                logprobs = transition_scores[:delta]
+
+                # print("Transition scores:")
+                # print("Output sequence shape:", output_sequence.shape)
+                # print("Input length:", input_length)
+                # print("logprobs shape:", logprobs.shape)
+                # print("| token | token string | logits | probability")
+            assert len(generated_sequence) == len(logprobs)
+
+            # Create logprobs dict
+            logprobs_dicts = []
+            for tok, score in zip(generated_sequence, logprobs, strict=True):
+                logprobs_dicts.append(
+                    {
+                        "token": int(tok.numpy()),
+                        "repr": repr(self._tokenizer.decode(tok)),
+                        "logit": float(score.item()),
+                        "probability": float(np.exp(score.numpy())),
+                    }
+                )
         else:
             logprobs = None
 
         if prompt.max_tokens == 0:
             # Huggingface seems to default to one token always return an extra token
-            tokens = tokens[:-1]
+            output_tokens = output_tokens[:-1]
             logprobs = logprobs[:-1]
-            text = ""
+            generated_text = ""
             generation_output.sequences = generation_output.sequences[:, :-1]
 
-        ###
-
-        # print("Transition Scores:")
-        # for tok, score in zip(generated_tokens[0], transition_scores[0]):
-        #     print(
-        #         f"| {tok:5d} | {repr(self._tokenizer.decode(tok)):8s} | {score.numpy():.3f} | {np.exp(score.numpy()):.2%}"
-        #     )
-
-        # completion_logprobs = logprobs[input_length-1:]
-        # print("\nLogprobs from logits:")
-        # assert len(completion_logprobs) == len(generated_tokens[0])
-        # print("| token | token string | logits | probability")
-        # for tok, score in zip(generated_tokens[0], completion_logprobs):
-        #     # | token | token string | logits | probability
-        #     print(
-        #         f"| {tok:5d} | {repr(self._tokenizer.decode(tok)):8s} | {score.numpy():.3f} | {np.exp(score.numpy()):.2%}"
-        #     )
-        # If you sum the generated tokens' scores and apply the length penalty, you'll get the sequence scores.
-        # Tip: recomputing the scores is only guaranteed to match with `normalize_logits=False`. Depending on the
-        # use case, you might want to recompute it with `normalize_logits=True`.
-        # output_length = input_length + np.sum(transition_scores.numpy() < 0, axis=1)
-        # length_penalty = model.generation_config.length_penalty
-        # reconstructed_scores = transition_scores.sum(axis=1) / (output_length**length_penalty)
-        # print(np.allclose(outputs.sequences_scores, reconstructed_scores))
-        ###
-
         return HuggingfacePrediction(
-            completion_text=text,
+            completion_text=generated_text,
             prompt=prompt,
             metad=generation_output,
             _prompt_encoding=encoded_input.to("cpu"),
-            _tokens=tokens,
+            _tokens=output_tokens,
             _log_probs=logprobs.detach().cpu().numpy(),
+            _logprobs_dict=logprobs_dicts,
         )
 
     def get_model_max_length(self) -> int:
@@ -594,7 +500,7 @@ def _initialize_hf_model(
             torch_dtype=precision,
             device_map="auto",
             **_kwargs,
-        )#.to(torch_device)
+        )  # .to(torch_device)
     elif runtime == Runtime.ORT_CPU:
         if torch_device.type != "cpu":
             logging.warn(
