@@ -24,10 +24,10 @@ class HuggingfacePrediction(LmPrediction):
     def completion_tokens(self) -> list[str]:
         return self._tokens[self._num_prompt_tokens :]
 
-    # @property
-    # def completion_logprobs(self) -> list[float]:
-    #     self._verify_logprobs()
-    #     return self._log_probs[self._num_prompt_tokens :]
+    @property
+    def completion_logprobs(self) -> list[float]:
+        self._verify_logprobs()
+        return self._log_probs
 
     @property
     def prompt_tokens(self):
