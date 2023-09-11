@@ -1,4 +1,5 @@
 import random
+import numpy as np
 import tiktoken
 import time
 import warnings
@@ -104,6 +105,17 @@ class OpenAiLmPrediction(LmPrediction):
 
     def get_full_text(self):
         return self.prompt.text + self.completion_text
+
+    @property
+    def logprobs_dict(self):
+        oai_logprobs = []
+        for token, logprob in zip(self.completion_tokens, self.completion_logprobs, strict=True):
+            oai_logprobs.append({
+                "repr": repr(token),
+                "probability": logprob,
+                "score": np.e**logprob, # convert logprob back to a probability
+            })
+        return self._logprobs_dict
 
 
 class OpenAiLmChatPrediction(LmPrediction):
