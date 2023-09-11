@@ -71,7 +71,7 @@ try:
         PreTrainedModel,
         PreTrainedTokenizerFast,
         T5ForConditionalGeneration,
-        set_seed,
+        set_seed
     )
 
     set_seed(42)
@@ -182,6 +182,8 @@ class HuggingfacePredictor(LmPredictor):
         encoded_input = self._tokenizer(
             prompt_text,
             return_tensors="pt",
+            truncation=True,
+            max_length=self._model.config.max_length
         ).to(
             self._device,
         )  # Move to device
