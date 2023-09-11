@@ -71,7 +71,7 @@ try:
         PreTrainedModel,
         PreTrainedTokenizerFast,
         T5ForConditionalGeneration,
-        set_seed
+        set_seed,
     )
 
     set_seed(42)
@@ -137,12 +137,14 @@ class HuggingfacePredictor(LmPredictor):
         tokenizer: PreTrainedTokenizerFast,
         model: PreTrainedModel,
         device: torch.device,
+        runtime: Runtime,
     ):
         super().__init__()
         self._tokenizer = tokenizer
         self._model = model
         self._device = device
         self.is_chat_model = False
+        self.runtime = runtime
 
     def _predict_maybe_cached(
         self,
@@ -183,15 +185,19 @@ class HuggingfacePredictor(LmPredictor):
             prompt_text,
             return_tensors="pt",
             truncation=True,
-            max_length=self._model.config.max_length
-        ).to(
-            self._device,
-        )  # Move to device
+            max_length=self._model.config.max_length,
+        )
+
+        if self.runtime != Runtime.ACCELERATE:
+            encoded_input = encoded_input.to(
+                self._device,
+            )  # Move to device
 
         # ONNX models themselves cannot be moved to a device
         # but their input tensors must be moved to GPU
-        # if not _ONNX_RUNTIME or not isinstance(self._model, ORTModel):
-        #     self._model.to(self._device)  # Ensure model is on device
+        # Similarly, Accelerate takes care of moving tensors
+        if self.runtime != Runtime.ACCELERATE and not isinstance(self._model, ORTModel):
+            self._model.to(self._device)  # Ensure model is on device
 
         need_log_prob = prompt.logprobs is not None and prompt.logprobs > 0
 
@@ -276,7 +282,7 @@ class HuggingfacePredictor(LmPredictor):
                         decoded_tkn = self._tokenizer.decode(token_id)
                         # print(idx, token_id, repr(decoded_tkn))
                         if stop_sequence in decoded_tkn:
-                            stop_idx = idx-1
+                            stop_idx = idx - 1
                             break
             rencoded = self._tokenizer.encode(generated_text, add_special_tokens=False)
             delta = -(len(generated_sequence) - len(rencoded))
@@ -311,7 +317,7 @@ class HuggingfacePredictor(LmPredictor):
                 # assert len(logprobs) == len(output_tokens[1:])
                 # print("Raw logits:")
                 # print("| token | token string | logits | probability")
-                logprobs = logprobs[input_length-1 :]
+                logprobs = logprobs[input_length - 1 :]
             else:
                 transition_scores = self._model.compute_transition_scores(
                     generation_output.sequences,
@@ -487,7 +493,7 @@ def _initialize_hf_model(
     model_name: str,
     model_class: PreTrainedModel,
     runtime: Runtime = Runtime.PYTORCH,
-    precision: torch.dtype = torch.float32,
+    precision: torch.dtype | str = "auto",
     _kwargs: dict = {},
 ) -> HuggingfacePredictor:
     torch_device = _get_accelerator()
