@@ -335,7 +335,7 @@ class HuggingfacePredictor(LmPredictor):
                 def new_call(attention_mask, *args, **kwargs):
                     nonlocal cached_logits
                     val = old_forward(attention_mask=attention_mask, *args, **kwargs)
-                    cached_logits.append(val.logits)
+                    cached_logits.append(val.logits.detach())
                     return val
 
             else:
@@ -343,7 +343,7 @@ class HuggingfacePredictor(LmPredictor):
                 def new_call(*args, **kwargs):
                     nonlocal cached_logits
                     val = old_forward(*args, **kwargs)
-                    cached_logits.append(val.logits)
+                    cached_logits.append(val.logits.detach())
                     return val
 
             self._model.forward = new_call
@@ -462,7 +462,9 @@ class HuggingfacePredictor(LmPredictor):
                 logprobs = _gather_logprobs_from_logits(
                     all_logits[0],
                     model_output_sequence[1:],
-                )
+                ).detach().cpu().numpy()
+                del cached_logits
+                del all_logits
 
                 assert len(model_output_sequence[1:]) == len(logprobs)
                 if stop_token_idx_output and stop_token_idx_output > 0:
