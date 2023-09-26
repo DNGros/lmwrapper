@@ -93,7 +93,7 @@ def test_stop_n_codet5():
     )
     no_logprobs_pred = lm.predict(no_logprobs_prompt)
     assert "\n" in no_logprobs_pred.completion_text
-    assert no_logprobs_pred.completion_tokens[0] not in ["<s>", "<\s>"]
+    assert no_logprobs_pred.completion_tokens[0] not in ["<s>", "<\\s>"]
     assert len(no_logprobs_pred.completion_tokens) == 49
 
     no_logprobs_n_prompt = LmPrompt(
@@ -112,7 +112,7 @@ def test_stop_n_codet5():
     )
     no_logprobs_n_pred = lm.predict(no_logprobs_n_prompt)
     assert "\n" not in no_logprobs_n_pred.completion_text
-    assert no_logprobs_n_pred.completion_tokens[0] not in ["<s>", "<\s>"]
+    assert no_logprobs_n_pred.completion_tokens[0] not in ["<s>", "<\\s>"]
     assert len(no_logprobs_n_pred.completion_tokens) == 5
 
     logprobs_prompt = LmPrompt(
@@ -130,7 +130,7 @@ def test_stop_n_codet5():
     )
     logprobs_pred = lm.predict(logprobs_prompt)
     assert "\n" in logprobs_pred.completion_text
-    assert logprobs_pred.completion_tokens[0] not in ["<s>", "<\s>"]
+    assert logprobs_pred.completion_tokens[0] not in ["<s>", "<\\s>"]
     assert len(logprobs_pred.completion_tokens) == 49
     assert len(logprobs_pred.completion_logprobs) == len(
         logprobs_pred.completion_tokens
@@ -153,7 +153,7 @@ def test_stop_n_codet5():
     )
     logprobs_n_pred = lm.predict(logprobs_n_prompt)
     assert "\n" not in logprobs_n_pred.completion_text
-    assert logprobs_n_pred.completion_tokens[0] not in ["<s>", "<\s>"]
+    assert logprobs_n_pred.completion_tokens[0] not in ["<s>", "<\\s>"]
     assert len(logprobs_n_pred.completion_tokens) == 2
     assert len(logprobs_n_pred.completion_logprobs) == len(
         logprobs_n_pred.completion_tokens
