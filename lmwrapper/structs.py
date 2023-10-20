@@ -1,15 +1,15 @@
-from dataclasses import dataclass
 import statistics
-from typing import List, Any, Union, Tuple
-from enum import Enum
+from dataclasses import dataclass
+from typing import Any, Union
 
 from lmwrapper.utils import StrEnum
 
 LM_CHAT_DIALOG_COERCIBLE_TYPES = Union[
     str,
-    List[Union["LmChatTurn", Tuple[str, str], dict, str]],
+    list[Union["LmChatTurn", tuple[str, str], dict, str]],
     "LmChatDialog",
 ]  # Defines a set of types that can be converted into a LmChatDialog
+
 
 @dataclass(frozen=True)
 class LmPrompt:
@@ -24,7 +24,7 @@ class LmPrompt:
     This means it is possible that the default max might cause errors with long prompts.
     It recommended that you specify a limit yourself to have more predictable
     behaviour."""
-    stop: List[str] = None
+    stop: list[str] = None
     """Sequences where the model will stop generating further tokens.
     The returned text will not contain the stop sequence. This sequence might span
     accross tokens and does not have to be an actual token in the vocabulary.
@@ -91,29 +91,36 @@ class LmPrompt:
         if self.stop is not None:
             if not isinstance(self.stop, list):
                 raise ValueError(
-                    "The stop parameter should be a list of strings on where to stop."
+                    "The stop parameter should be a list of strings on where to"
+                    " stop.",
                 )
             if not all(isinstance(x, str) for x in self.stop):
                 raise ValueError(
-                    "The stop parameter should be a list of strings on where to stop."
+                    "The stop parameter should be a list of strings on where to"
+                    " stop.",
                 )
         if isinstance(self.temperature, int):
             object.__setattr__(self, "temperature", float(self.temperature))
         if not isinstance(self.temperature, float):
             raise ValueError("The temperature parameter should be a float.")
         if self.temperature < 0.0:
-            raise ValueError("The temperature parameter should be a positive float.")
+            raise ValueError(
+                "The temperature parameter should be a positive float.",
+            )
         if not isinstance(self.top_p, float):
             raise ValueError("The top_p parameter should be a float.")
         if not isinstance(self.presence_penalty, float):
-            raise ValueError("The presence_penalty parameter should be a float.")
+            raise ValueError(
+                "The presence_penalty parameter should be a float.",
+            )
         if not isinstance(self.num_completions, int):
             raise ValueError("The num_completions parameter should be an int.")
         if self.cache is not None and not isinstance(self.cache, bool):
             raise ValueError("The cache parameter should be a bool.")
         if self.logprobs is not None and not isinstance(self.logprobs, int):
             raise ValueError(
-                "The logprob parameter should be int denoting number of probs return, or None."
+                "The logprob parameter should be int denoting number of probs"
+                " return, or None.",
             )
 
     def is_text_a_chat(self) -> bool:
@@ -123,7 +130,8 @@ class LmPrompt:
         return LmChatDialog(self.text)
 
     def get_text_as_string_default_form(self) -> str:
-        """Will always return a string, even if it was originally a chat. It will use
+        """
+        Will always return a string, even if it was originally a chat. It will use
         the default form of the chat specified in LmChatDialog.to_default_string_prompt()
         """
         if self.is_text_a_chat():
@@ -175,8 +183,8 @@ class LmChatDialog(list[LmChatTurn]):
                     out.append(turn)
                 case _:
                     raise ValueError(
-                        f"Invalid type for text: {type(turn)}. "
-                        f"It should be a tuple of strings (role, content) or a LmChatTurn."
+                        f"Invalid type for text: {type(turn)}. It should be a"
+                        " tuple of strings (role, content) or a LmChatTurn.",
                     )
             current_role = (
                 ChatGptRoles.user
@@ -185,14 +193,15 @@ class LmChatDialog(list[LmChatTurn]):
             )
         super().__init__(out)
 
-    def as_dicts(self) -> List[dict]:
+    def as_dicts(self) -> list[dict]:
         return [
             {k: v for k, v in chat_turn.__dict__.items() if v is not None}
             for chat_turn in self
         ]
 
     def to_default_string_prompt(self) -> str:
-        """A simple method of representing the dialogue as a string.
+        """
+        A simple method of representing the dialogue as a string.
         Has the format:
         ```
         user: message
@@ -216,43 +225,45 @@ class LmPrediction:
     def _verify_logprobs(self):
         if self.prompt.logprobs is None or self.prompt.logprobs == 0:
             raise ValueError(
-                "This property is not available unless the prompt logprobs is set"
+                "This property is not available unless the prompt logprobs"
+                " is set",
             )
 
     @property
-    def completion_tokens(self) -> List[str]:
+    def completion_tokens(self) -> list[str]:
         raise NotImplementedError(
-            "This version of prediction does not support completion tokens"
+            "This version of prediction does not support completion tokens",
         )
 
     @property
     def completion_token_offsets(self):
         raise NotImplementedError(
-            "This version of prediction does not support completion token offsets"
+            "This version of prediction does not support completion token"
+            " offsets",
         )
 
     @property
-    def completion_logprobs(self) -> List[float]:
+    def completion_logprobs(self) -> list[float]:
         raise NotImplementedError(
-            "This version of prediction does not support completion logprobs"
+            "This version of prediction does not support completion logprobs",
         )
 
     @property
     def prompt_tokens(self):
         raise NotImplementedError(
-            "This version of prediction does not support prompt tokens"
+            "This version of prediction does not support prompt tokens",
         )
 
     @property
     def prompt_token_offsets(self):
         raise NotImplementedError(
-            "This version of prediction does not support prompt token offsets"
+            "This version of prediction does not support prompt token offsets",
         )
 
     @property
     def prompt_logprobs(self):
         raise NotImplementedError(
-            "This version of prediction does not support prompt logprobs"
+            "This version of prediction does not support prompt logprobs",
         )
 
     def get_full_text(self):
@@ -260,13 +271,13 @@ class LmPrediction:
 
     def get_full_tokens(self):
         raise NotImplementedError(
-            "This version of prediction does not support full tokens"
+            "This version of prediction does not support full tokens",
         )
 
     @property
     def full_logprobs(self):
         raise NotImplementedError(
-            "This version of prediction does not support full logprobs"
+            "This version of prediction does not support full logprobs",
         )
 
     def completion_mean_logprob(self):

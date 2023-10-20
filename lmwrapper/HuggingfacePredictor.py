@@ -1,20 +1,23 @@
-from lmwrapper.HuggingfacePrediction import HuggingfacePrediction
-from lmwrapper._TokenStoppingCriteria import _TokenStoppingCriteria
-from lmwrapper.abstract_predictor import LmPredictor
-from lmwrapper.huggingface_wrapper import _ONNX_RUNTIME, Runtime
-from lmwrapper.prompt_trimming import PromptTrimmer
-from lmwrapper.structs import LmPrediction, LmPrompt
-from lmwrapper.utils import log_cuda_mem
-
-import torch
-from transformers import GenerationConfig, PreTrainedModel, PreTrainedTokenizerFast
-from transformers.generation.utils import GenerateOutput
-from transformers.utils.generic import TensorType
-
-
 import inspect
 import logging
 from functools import cached_property
+
+import torch
+from transformers import (
+    GenerationConfig,
+    PreTrainedModel,
+    PreTrainedTokenizerFast,
+)
+from transformers.generation.utils import GenerateOutput
+from transformers.utils.generic import TensorType
+
+from lmwrapper._TokenStoppingCriteria import _TokenStoppingCriteria
+from lmwrapper.abstract_predictor import LmPredictor
+from lmwrapper.huggingface_wrapper import Runtime
+from lmwrapper.HuggingfacePrediction import HuggingfacePrediction
+from lmwrapper.prompt_trimming import PromptTrimmer
+from lmwrapper.structs import LmPrediction, LmPrompt
+from lmwrapper.utils import log_cuda_mem
 
 
 def _gather_logprobs_from_logits(
@@ -56,12 +59,13 @@ class HuggingfacePredictor(LmPredictor):
     ) -> LmPrediction | list[LmPrediction]:
         if not isinstance(prompt.text, str) and len(prompt.text) != 1:
             raise NotImplementedError(
-                "Prompt batches other than size 1 are not supported."
+                "Prompt batches other than size 1 are not supported.",
             )
 
         if prompt.echo and not self.allow_patch_model_forward:
             raise NotImplementedError(
-                "Prompt echo is only supported with `allow_patch_model_forward` = True."
+                "Prompt echo is only supported with `allow_patch_model_forward`"
+                " = True.",
             )
 
         patch_model_forward = False
@@ -70,7 +74,8 @@ class HuggingfacePredictor(LmPredictor):
 
         if prompt.logprobs > 1:
             raise NotImplementedError(
-                "Retrieving more than 1 logprob is not yet supported for HuggingFace models."
+                "Retrieving more than 1 logprob is not yet supported for"
+                " HuggingFace models.",
             )
 
         if prompt.logprobs and prompt.top_p != 1.0:
@@ -81,14 +86,15 @@ class HuggingfacePredictor(LmPredictor):
 
         if prompt.text == "" and not prompt.add_bos_token:
             raise Exception(
-                "Cannot do unconditional generation without `add_bos_token`."
+                "Cannot do unconditional generation without `add_bos_token`.",
             )
 
         is_encoder_decoder = self._model.config.is_encoder_decoder
 
         if is_encoder_decoder and prompt.add_bos_token:
             raise Exception(
-                "Encoder/decoder models should not have bos tokens added manually."
+                "Encoder/decoder models should not have bos tokens added"
+                " manually.",
             )
 
         if prompt.add_bos_token:
@@ -98,7 +104,9 @@ class HuggingfacePredictor(LmPredictor):
             prompt_text = prompt.text
 
         max_length = self._model.config.max_length
-        model_parameters = set(inspect.signature(self._model.forward).parameters.keys())
+        model_parameters = set(
+            inspect.signature(self._model.forward).parameters.keys(),
+        )
         model_requires_attention_mask = "attention_mask" in model_parameters
 
         if self.prompt_trimmer:
@@ -113,15 +121,18 @@ class HuggingfacePredictor(LmPredictor):
         if len(encoded_input.input_ids) > max_length:
             if self.prompt_trimmer:
                 raise ValueError(
-                    "Prompt is too long for model. Please check that the provided trimmer is configured correctly."
+                    "Prompt is too long for model. Please check that the"
+                    " provided trimmer is configured correctly.",
                 )
             else:
                 raise ValueError(
-                    "Prompt is too long for model. Please pass in a trimmer."
+                    "Prompt is too long for model. Please pass in a trimmer.",
                 )
 
         if is_encoder_decoder:
-            encoded_input["decoder_input_ids"] = encoded_input["input_ids"].clone()
+            encoded_input["decoder_input_ids"] = encoded_input[
+                "input_ids"
+            ].clone()
 
         logging.debug("Pre moving encoded tokens")
         log_cuda_mem()
@@ -137,7 +148,7 @@ class HuggingfacePredictor(LmPredictor):
         logging.debug("Pre model moving")
         log_cuda_mem()
 
-        if self.runtime in { Runtime.PYTORCH, Runtime.BETTER_TRANSFORMER }:
+        if self.runtime in {Runtime.PYTORCH, Runtime.BETTER_TRANSFORMER}:
             self._model.to(self._device)  # Ensure model is on device
 
         logging.debug("Post model moving")
@@ -217,7 +228,11 @@ class HuggingfacePredictor(LmPredictor):
 
                 def new_call(attention_mask, *args, **kwargs):
                     nonlocal cached_logits
-                    val = old_forward(attention_mask=attention_mask, *args, **kwargs)
+                    val = old_forward(
+                        attention_mask=attention_mask,
+                        *args,
+                        **kwargs,
+                    )
                     cached_logits.append(val.logits.detach())
                     return val
 
@@ -250,7 +265,7 @@ class HuggingfacePredictor(LmPredictor):
                     decode=True,
                     tokenizer=self._tokenizer,
                     input_length=input_length,
-                )
+                ),
             ]
 
         with torch.no_grad():
@@ -315,8 +330,12 @@ class HuggingfacePredictor(LmPredictor):
                         stop_token_idx_generated += (
                             1  # if they're equal, we include the current token
                         )
-                    stop_token_idx_output = input_length + stop_token_idx_generated
-                    output_sequence = model_output_sequence[:stop_token_idx_output]
+                    stop_token_idx_output = (
+                        input_length + stop_token_idx_generated
+                    )
+                    output_sequence = model_output_sequence[
+                        :stop_token_idx_output
+                    ]
                     generated_sequence = output_sequence[input_length:]
                     break
 
@@ -326,7 +345,9 @@ class HuggingfacePredictor(LmPredictor):
         # Original: self._tokenizer.convert_ids_to_tokens(output_sequence)
         output_tokens = [self._tokenizer.decode(t) for t in output_sequence]
         if len(output_tokens) != len(output_sequence):
-            raise Exception("Output token length did not match output sequence length!")
+            raise Exception(
+                "Output token length did not match output sequence length!",
+            )
 
         if prompt.add_bos_token:
             output_tokens = output_tokens[1:]
@@ -383,7 +404,9 @@ class HuggingfacePredictor(LmPredictor):
                     logprobs = logprobs[:stop_token_idx_generated]
                 assert len(generated_sequence) == len(logprobs)
 
-            token_sequence = output_sequence if prompt.echo else generated_sequence
+            token_sequence = (
+                output_sequence if prompt.echo else generated_sequence
+            )
             token_sequence = token_sequence.detach().cpu()
             probabilities = logprobs.exp()
 
@@ -392,7 +415,10 @@ class HuggingfacePredictor(LmPredictor):
 
             # Create logprobs dict
             for token, score, probability in zip(
-                token_sequence, logprobs, probabilities, strict=True
+                token_sequence,
+                logprobs,
+                probabilities,
+                strict=True,
             ):
                 logprobs_dicts.append(
                     {
@@ -400,7 +426,7 @@ class HuggingfacePredictor(LmPredictor):
                         "repr": repr(self._tokenizer.decode(token)),
                         "logit": float(score),
                         "probability": float(probability),
-                    }
+                    },
                 )
         else:
             logprobs = None
@@ -464,7 +490,9 @@ class HuggingfacePredictor(LmPredictor):
         if torch.cuda.is_available():
             post_memory = torch.cuda.memory_allocated()
             if (post_memory - pre_memory) > 31_457_280:  # 30mb delta
-                logging.warning("Possible memory leak detected in model prediction.")
+                logging.warning(
+                    "Possible memory leak detected in model prediction.",
+                )
 
         return prediction
 

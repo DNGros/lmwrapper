@@ -1,8 +1,10 @@
 from abc import abstractmethod
-from typing import Optional, Union, Dict, List
-from lmwrapper.caching import get_disk_cache
-from lmwrapper.structs import LmPrompt, LmPrediction
+from typing import Optional, Union
+
 from ratemate import RateLimit
+
+from lmwrapper.caching import get_disk_cache
+from lmwrapper.structs import LmPrediction, LmPrompt
 
 
 class LmPredictor:
@@ -20,7 +22,9 @@ class LmPredictor:
         prompt: Union[str, LmPrompt],
     ) -> LmPrediction:
         prompt = self._cast_prompt(prompt)
-        should_cache = self._cache_default if prompt.cache is None else prompt.cache
+        should_cache = (
+            self._cache_default if prompt.cache is None else prompt.cache
+        )
         self._validate_prompt(prompt, raise_on_invalid=True)
         if should_cache:
             cache_key = (prompt, self._get_cache_key_metadata())
@@ -41,16 +45,23 @@ class LmPredictor:
     ) -> bool:
         return self._disk_cache.delete(self._cache_key_for_prompt(prompt))
 
-    def _validate_prompt(self, prompt: LmPrompt, raise_on_invalid: bool = True) -> bool:
+    def _validate_prompt(
+        self,
+        prompt: LmPrompt,
+        raise_on_invalid: bool = True,
+    ) -> bool:
         """Called on prediction to make sure the prompt is valid for the model"""
         return True
 
     @abstractmethod
     def _get_cache_key_metadata(self):
-        return {'name': type(self).__name__}
+        return {"name": type(self).__name__}
 
     @abstractmethod
-    def _predict_maybe_cached(self, prompt: LmPrompt) -> Union[LmPrediction, List[LmPrediction]]:
+    def _predict_maybe_cached(
+        self,
+        prompt: LmPrompt,
+    ) -> Union[LmPrediction, list[LmPrediction]]:
         pass
 
     def _cast_prompt(self, prompt: Union[str, LmPrompt]) -> LmPrompt:
@@ -67,30 +78,43 @@ class LmPredictor:
 
     def could_completion_go_over_token_limit(self, prompt: LmPrompt) -> bool:
         count = self.estimate_tokens_in_prompt(prompt)
-        return (count + (prompt.max_tokens or self.default_tokens_generated)) > self.token_limit
+        return (
+            count + (prompt.max_tokens or self.default_tokens_generated)
+        ) > self.token_limit
 
     def model_name(self):
         return self.__class__.__name__
 
     def remove_special_chars_from_tokens(self, tokens: list[str]) -> list[str]:
-        """Certain tokenizers have special characters (such as a Ġ to represent a space).
+        """
+        Certain tokenizers have special characters (such as a Ġ to represent a space).
         This method is to try to remove those and get it in a form that could be joined
-        and represent the original text."""
-        raise NotImplementedError()
+        and represent the original text.
+        """
+        raise NotImplementedError
 
     def tokenize(self, input_str: str) -> list[str]:
-        raise NotImplementedError("This predictor does not implement tokenization")
+        raise NotImplementedError(
+            "This predictor does not implement tokenization",
+        )
 
-    def configure_global_ratelimit(self, max_count=1, per_seconds=1, greedy=False) -> None:
+    def configure_global_ratelimit(
+        self,
+        max_count=1,
+        per_seconds=1,
+        greedy=False,
+    ) -> None:
         """
         Configure global ratelimiting, max tries per given seconds
         If greedy is set to true, requests will be made without time inbetween,
         followed by a long wait. Otherwise, requests are evenly spaced.
         """
         if max_count and per_seconds:
-            LmPredictor._rate_limit = RateLimit(max_count=max_count,
-                                                per=per_seconds,
-                                                greedy=greedy)
+            LmPredictor._rate_limit = RateLimit(
+                max_count=max_count,
+                per=per_seconds,
+                greedy=greedy,
+            )
         else:
             LmPredictor._rate_limit = None
 
@@ -100,7 +124,7 @@ class LmPredictor:
         if LmPredictor._rate_limit:
             return LmPredictor._rate_limit.wait()
 
-        return 0.
+        return 0.0
 
     @property
     @abstractmethod

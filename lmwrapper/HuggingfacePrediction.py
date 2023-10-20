@@ -1,8 +1,7 @@
-from lmwrapper.structs import LmPrediction
-
-
 from dataclasses import dataclass
 from typing import Any
+
+from lmwrapper.structs import LmPrediction
 
 
 @dataclass
@@ -26,7 +25,9 @@ class HuggingfacePrediction(LmPrediction):
         if self.prompt.echo:
             assert len(self._tokens) == len(self._log_probs)
         else:
-            assert len(self._tokens[self._num_prompt_tokens :]) == len(self._log_probs)
+            assert len(self._tokens[self._num_prompt_tokens :]) == len(
+                self._log_probs,
+            )
 
     @property
     def completion_tokens(self) -> list[str]:
@@ -47,7 +48,10 @@ class HuggingfacePrediction(LmPrediction):
     @property
     def prompt_logprobs(self):
         if not self.prompt.echo:
-            raise ValueError("This property is not available unless the prompt echo is set to True")
+            raise ValueError(
+                "This property is not available unless the prompt echo is set"
+                " to True",
+            )
         self._verify_logprobs()
         return self._log_probs[: self._num_prompt_tokens]
 
