@@ -1,8 +1,8 @@
-from enum import Enum
 from importlib.metadata import version as import_version
 from pathlib import Path
 import logging
 from typing import Literal
+from lmwrapper.Runtime import Runtime
 from lmwrapper.utils import log_cuda_mem
 
 from packaging import version
@@ -111,30 +111,6 @@ if _ONNX_RUNTIME:
         raise ImportError(
             msg,
         )
-
-
-class Runtime(Enum):
-    """
-    Enum to specify the runtime backend for model execution.
-    """
-
-    PYTORCH = 1
-    """Use PyTorch as the backend runtime."""
-
-    ACCELERATE = 2
-    """Use Huggingface Accelerate as the backend runtime."""
-
-    ORT_CUDA = 3
-    """Use ONNX Runtime with CUDA as the backend runtime."""
-
-    ORT_TENSORRT = 4
-    """Use ONNX Runtime with TensorRT as the backend runtime."""
-
-    ORT_CPU = 5
-    """Use ONNX Runtime with CPU as the backend runtime."""
-
-    BETTER_TRANSFORMER = 6
-    """Use Better Transformer as the backend runtime."""
 
 
 def _get_accelerator() -> torch.device:
@@ -372,6 +348,11 @@ def _configure_model(
         _kwargs |= {
             "low_cpu_mem_usage": True,
         }
+    elif model.startswith("codellama/CodeLlama-"):
+        _kwargs |= {
+            "low_cpu_mem_usage": True,
+        }
+
 
     return model_class, _kwargs
 

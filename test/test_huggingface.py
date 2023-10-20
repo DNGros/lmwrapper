@@ -1,3 +1,4 @@
+from lmwrapper.Runtime import Runtime
 from lmwrapper.prompt_trimming import HfTokenTrimmer
 from lmwrapper.utils import StrEnum
 
@@ -5,7 +6,7 @@ import pytest
 import torch
 import numpy as np
 
-from lmwrapper.huggingface_wrapper import Runtime, get_huggingface_lm
+from lmwrapper.huggingface_wrapper import get_huggingface_lm
 from lmwrapper.structs import LmPrompt
 
 
@@ -15,7 +16,7 @@ class Models(StrEnum):
     CodeGen2_1B = "Salesforce/codegen2-1B"
     CodeGen2_3_7B = "Salesforce/codegen2-3_7B"
     InstructCodeT5plus_16B = "Salesforce/instructcodet5p-16b"
-
+    CodeLLama_7B = "codellama/CodeLlama-7b-hf"
     DistilGPT2 = "distilgpt2"
     GPT2 = "gpt2"
 
@@ -30,6 +31,18 @@ BIG_CAUSAL_MODELS = {Models.CodeGen2_3_7B}
 BIG_MODELS = BIG_SEQ2SEQ_MODELS | BIG_CAUSAL_MODELS
 ALL_MODELS = SEQ2SEQ_MODELS | CAUSAL_MODELS | BIG_MODELS
 
+def test_code_llama():
+    prompt = LmPrompt(
+        "print('Hello world",
+        max_tokens=15,
+        cache=False,
+        temperature=0,
+    )
+    lm = get_huggingface_lm(Models.CodeLLama_7B, runtime=Runtime.PYTORCH,
+                            trust_remote_code=True,
+                            precision=torch.float16)
+    out = lm.predict(prompt)
+    assert out.completion_text
 
 @pytest.mark.slow()
 def test_trim_start():
