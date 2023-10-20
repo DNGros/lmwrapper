@@ -2,6 +2,8 @@ name: lmwrapper
 channels:
   - conda-forge
   - pytorch
+  # Nightlies:
+  # - pytorch-nightly
   - huggingface
   - nvidia
 dependencies:
@@ -13,7 +15,14 @@ dependencies:
   - tiktoken
   - transformers
   - pytest
+  # MacOS
   - pytorch::pytorch
+  # Linux
+  # - pytorch
+  # CUDA:
+  # - pytorch-cuda=12.1
+  # CPU:
+  # - cpuonly
   - humanize
   - black
   - ruff

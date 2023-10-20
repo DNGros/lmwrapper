@@ -15,7 +15,7 @@ pip install "lmwrapper @ git+https://github.com/DNGros/lmwrapper.git"
 
 For usage with HuggingFace models as well:
 ```bash
-pip install "lmwrapper[huggingface] @ git+https://github.com/DNGros/lmwrapper.git"
+pip install "lmwrapper[hf] @ git+https://github.com/DNGros/lmwrapper.git"
 ```
 
 # Example usage

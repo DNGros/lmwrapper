@@ -218,7 +218,7 @@ class HuggingfacePredictor(LmPredictor):
                 def new_call(attention_mask, *args, **kwargs):
                     nonlocal cached_logits
                     val = old_forward(attention_mask=attention_mask, *args, **kwargs)
-                    cached_logits.append(val.logits)
+                    cached_logits.append(val.logits.detach())
                     return val
 
             else:
@@ -226,7 +226,7 @@ class HuggingfacePredictor(LmPredictor):
                 def new_call(*args, **kwargs):
                     nonlocal cached_logits
                     val = old_forward(*args, **kwargs)
-                    cached_logits.append(val.logits)
+                    cached_logits.append(val.logits.detach())
                     return val
 
             self._model.forward = new_call
@@ -342,10 +342,17 @@ class HuggingfacePredictor(LmPredictor):
                 all_logits = torch.cat(cached_logits, dim=1)
                 assert all_logits.shape[0] == 1  # batch
                 assert all_logits.shape[1] == len(model_output_sequence[1:])
-                logprobs = _gather_logprobs_from_logits(
+                output_logprobs = _gather_logprobs_from_logits(
                     all_logits[0],
                     model_output_sequence[1:],
                 )
+
+                logprobs = output_logprobs.detach().cpu()
+
+                # Free memory
+                del output_logprobs
+                del cached_logits
+                del all_logits
 
                 assert len(model_output_sequence[1:]) == len(logprobs)
                 if stop_token_idx_output and stop_token_idx_output > 0:
@@ -353,27 +360,31 @@ class HuggingfacePredictor(LmPredictor):
 
                 assert len(output_sequence) == len(logprobs)
             else:
-                full_logprobs = self._model.compute_transition_scores(
+                output_logprobs = self._model.compute_transition_scores(
                     generation_output.sequences,
                     generation_output.scores,
                     normalize_logits=True,
                 )[0]
+
+                logprobs = output_logprobs.detach().cpu()
+                # Free memory
+                del output_logprobs
+
                 if is_encoder_decoder:
                     # we need to chop off the <s> first token
                     # as its probability will throw off uncertainty estimates
                     if stop_token_idx_generated:
                         # if a stop token is defined, we need to step one further due to the <s>
                         # TODO: we can clean this up with better input_length logic
-                        logprobs = full_logprobs[1 : stop_token_idx_generated + 1]
+                        logprobs = logprobs[1 : stop_token_idx_generated + 1]
                     else:
-                        logprobs = full_logprobs[1:]
+                        logprobs = logprobs[1:]
                 else:
-                    logprobs = full_logprobs[:stop_token_idx_generated]
+                    logprobs = logprobs[:stop_token_idx_generated]
                 assert len(generated_sequence) == len(logprobs)
 
             token_sequence = output_sequence if prompt.echo else generated_sequence
             token_sequence = token_sequence.detach().cpu()
-            logprobs = logprobs.detach().cpu()
             probabilities = logprobs.exp()
 
             assert len(token_sequence) == len(logprobs)
@@ -405,7 +416,7 @@ class HuggingfacePredictor(LmPredictor):
         logging.debug("Pre del statements")
         log_cuda_mem()
 
-        np_logprobs = logprobs.detach().cpu().numpy() if logprobs is not None else None
+        np_logprobs = logprobs.numpy() if logprobs is not None else None
         np_encoded_input = (
             encoded_input.to("cpu").convert_to_tensors(TensorType.NUMPY).copy()
         )

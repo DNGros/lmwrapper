@@ -2,6 +2,7 @@ from enum import Enum
 from importlib.metadata import version as import_version
 from pathlib import Path
 import logging
+from typing import Literal
 from lmwrapper.utils import log_cuda_mem
 
 from packaging import version
@@ -113,12 +114,27 @@ if _ONNX_RUNTIME:
 
 
 class Runtime(Enum):
+    """
+    Enum to specify the runtime backend for model execution.
+    """
+
     PYTORCH = 1
+    """Use PyTorch as the backend runtime."""
+
     ACCELERATE = 2
+    """Use Huggingface Accelerate as the backend runtime."""
+
     ORT_CUDA = 3
+    """Use ONNX Runtime with CUDA as the backend runtime."""
+
     ORT_TENSORRT = 4
+    """Use ONNX Runtime with TensorRT as the backend runtime."""
+
     ORT_CPU = 5
+    """Use ONNX Runtime with CPU as the backend runtime."""
+
     BETTER_TRANSFORMER = 6
+    """Use Better Transformer as the backend runtime."""
 
 
 def _get_accelerator() -> torch.device:
@@ -146,7 +162,6 @@ def _get_accelerator() -> torch.device:
     >>> device = _get_accelerator()
     >>> print(device)
     cuda # or mps or cpu
-
     """
     if torch.cuda.is_available():
         if _QUANT_CONFIG:
@@ -171,12 +186,12 @@ def get_huggingface_lm(
     device: torch.device | str = None,
 ) -> HuggingfacePredictor:
     """
-    Initialize and return a HuggingFace language model for prediction.
+    Initialize and return a Hugging Face language model for prediction.
 
     Parameters:
     -----------
     model : str
-        The identifier of the pre-trained model to load from the Huggingface Model Hub.
+        The identifier of the pre-trained model to load from the Hugging Face Model Hub.
 
     runtime : Runtime, optional
         The backend to use for inference. Default is `Runtime.PYTORCH`.
@@ -201,7 +216,7 @@ def get_huggingface_lm(
     Returns:
     --------
     HuggingfacePredictor
-        An initialized Huggingface model ready for prediction.
+        An initialized Hugging Face model ready for prediction.
 
     Raises:
     -------
@@ -237,14 +252,13 @@ def get_huggingface_lm(
 
     _kwargs = {"trust_remote_code": trust_remote_code}
 
-    model_class = AutoModelForCausalLM
     model_config = PretrainedConfig.from_pretrained(model)
 
     has_remote_code = (
         "auto_map" in model_config and "AutoConfig" in model_config["auto_map"]
     )
-    has_vocab_size = ("vocab_size" in model_config)
-    has_decoder = ("decoder" in model_config)
+    has_vocab_size = "vocab_size" in model_config
+    has_decoder = "decoder" in model_config
     has_decoder_vocab_size = has_decoder and "vocab_size" in model_config.decoder
 
     # Addresses a bug in Transformers
@@ -254,18 +268,78 @@ def get_huggingface_lm(
     if not has_vocab_size and has_decoder_vocab_size:
         model_config.vocab_size = model_config.decoder.vocab_size
 
-
     if not trust_remote_code and has_remote_code:
         msg = (
             "The model provided has remote code and likely will not work as"
             " expected. Please call with `trust_remote_code = True` If you have"
             " read and trust the code."
         )
-        raise Exception(
+        raise ValueError(
             msg,
         )
 
-    if ("auto_map" in model_config) and ("AutoModelForSeq2SeqLM" in model_config["auto_map"]):
+    model_class, _kwargs = _configure_model(model, model_config, runtime, _kwargs)
+
+    return _initialize_hf_model(
+        model_name=model,
+        model_class=model_class,
+        model_config=model_config,
+        runtime=runtime,
+        precision=precision,
+        allow_patch_model_forward=allow_patch_model_forward,
+        prompt_trimmer=prompt_trimmer,
+        device=device,
+        _kwargs=_kwargs,
+    )
+
+
+def _configure_model(
+    model: str, model_config: PretrainedConfig, runtime: Runtime, _kwargs: dict
+) -> tuple[type[PreTrainedModel], dict]:
+    """
+    Configure the Hugging Face model class and additional keyword arguments based on input parameters.
+
+    Parameters:
+    -----------
+    model : str
+        Identifier of the pre-trained model to load from the Hugging Face Model Hub.
+
+    model_config : PretrainedConfig
+        The configuration object associated with the model.
+
+    runtime : Runtime
+        Backend runtime for inference. Only `Runtime.PYTORCH` and `Runtime.BETTER_TRANSFORMER` are considered.
+
+    _kwargs : dict
+        Additional keyword arguments to be modified and used in initializing the model.
+
+    Returns:
+    --------
+    tuple
+        (model_class, updated_kwargs)
+        - `model_class`: The model class to be used for initialization, either `AutoModelForCausalLM` or a variant.
+        - `updated_kwargs`: Modified keyword arguments for model initialization.
+
+    Raises:
+    -------
+    Exception:
+        If `Runtime.BETTER_TRANSFORMER` is selected for incompatible models.
+
+    Notes:
+    ------
+    * `_kwargs` can be modified within the function to add or remove keyword arguments for model initialization.
+    * The function supports special configurations for Salesforce models.
+
+    Examples:
+    ---------
+    >>> model_class, kwargs = _configure_model("gpt-2", config, Runtime.PYTORCH, {})
+    >>> model_class, kwargs = _configure_model("Salesforce/codegen", config, Runtime.BETTER_TRANSFORMER, {})
+    """
+    model_class = AutoModelForCausalLM
+
+    if ("auto_map" in model_config) and (
+        "AutoModelForSeq2SeqLM" in model_config["auto_map"]
+    ):
         model_class = AutoModelForSeq2SeqLM
 
     if model.startswith("Salesforce/codegen"):
@@ -274,7 +348,7 @@ def get_huggingface_lm(
                 "WARNING BetterTransformer breaks CodeGen models with"
                 " AutoClass. Please use a different model or runtime."
             )
-            raise Exception(
+            raise ValueError(
                 msg,
             )
 
@@ -299,20 +373,36 @@ def get_huggingface_lm(
             "low_cpu_mem_usage": True,
         }
 
-    return _initialize_hf_model(
-        model_name=model,
-        model_class=model_class,
-        model_config=model_config,
-        runtime=runtime,
-        precision=precision,
-        allow_patch_model_forward=allow_patch_model_forward,
-        prompt_trimmer=prompt_trimmer,
-        device=device,
-        _kwargs=_kwargs,
-    )
+    return model_class, _kwargs
 
 
-def get_ort_model(model: PreTrainedModel) -> "ORTModel":
+def get_ort_model(model: type[PreTrainedModel]) -> type["ORTModel"]:
+    """
+    Maps a given Hugging Face PreTrainedModel to its corresponding ONNX Runtime (ORT) model class.
+
+    Parameters:
+    -----------
+    model : PreTrainedModel
+        Hugging Face model instance or class (e.g., T5ForConditionalGeneration, AutoModelForSeq2SeqLM).
+
+    Returns:
+    --------
+    ORTModel : str
+        Corresponding ORT model class name as string (e.g., ORTModelForSeq2SeqLM, ORTModelForCausalLM).
+
+    Notes:
+    ------
+    * Currently supports mapping for `T5ForConditionalGeneration` and `AutoModelForSeq2SeqLM` to `ORTModelForSeq2SeqLM`.
+    * Other models default to `ORTModelForCausalLM`.
+
+    Examples:
+    ---------
+    >>> get_ort_model(T5ForConditionalGeneration)
+    'ORTModelForSeq2SeqLM'
+    >>> get_ort_model(AutoModelForCausalLM)
+    'ORTModelForCausalLM'
+
+    """
     if model in {T5ForConditionalGeneration, AutoModelForSeq2SeqLM}:
         return ORTModelForSeq2SeqLM
 
@@ -327,6 +417,41 @@ def get_huggingface_predictor(
     allow_patch_model_forward: bool = False,
     prompt_trimmer: PromptTrimmer | None = None,
 ) -> HuggingfacePredictor:
+    """
+    Creates and returns a HuggingfacePredictor object configured with the specified parameters.
+
+    Parameters:
+    -----------
+    tokenizer : PreTrainedTokenizerFast
+        Tokenizer instance responsible for converting text to tokens.
+
+    model : PreTrainedModel
+        Pre-trained Hugging Face model for predictions.
+
+    device : torch.device
+        Device on which the model and tokenizer will run. Can be a CPU or GPU device.
+
+    runtime : Runtime, optional
+        The runtime backend for the model. Default is PyTorch. Supports PyTorch, Accelerate, ONNX Runtime (ORT), etc.
+
+    allow_patch_model_forward : bool, optional
+        If True, allows the forward pass of the model to be patched. Default is False.
+
+    prompt_trimmer : PromptTrimmer | None, optional
+        An optional utility to trim prompts before feeding them to the model. None if no trimming is needed.
+
+    Returns:
+    --------
+    HuggingfacePredictor
+        Configured instance of HuggingfacePredictor.
+
+    Examples:
+    ---------
+    >>> predictor = get_huggingface_predictor(tokenizer, model, device=torch.device('cuda'))
+    >>> type(predictor)
+    <class 'HuggingfacePredictor'>
+
+    """
     return HuggingfacePredictor(
         tokenizer,
         model,
@@ -342,12 +467,65 @@ def _initialize_hf_model(
     model_class: PreTrainedModel,
     model_config: PretrainedConfig,
     runtime: Runtime = Runtime.PYTORCH,
-    precision: torch.dtype | str = "auto",
+    precision: torch.dtype | Literal["auto"] = "auto",
     allow_patch_model_forward: bool = True,
     prompt_trimmer: PromptTrimmer = None,
     device: torch.device = None,
     _kwargs: dict = {},
 ) -> HuggingfacePredictor:
+    """
+    Initialize a Hugging Face model for prediction based on various configurations.
+
+    Parameters:
+    -----------
+    model_name : str
+        Name or identifier of the Hugging Face model to load.
+
+    model_class : PreTrainedModel
+        Class of the Hugging Face model, e.g., AutoModelForCausalLM.
+
+    model_config : PretrainedConfig
+        Configuration object for the model.
+
+    runtime : Runtime, optional
+        Backend runtime for the model. Default is Runtime.PYTORCH.
+
+    precision : torch.dtype | "auto", optional
+        Data type precision for the model. 'auto' by default.
+
+    allow_patch_model_forward : bool, optional
+        Allow patching model's forward method. Default is True.
+
+    prompt_trimmer : PromptTrimmer, optional
+        Instance of a prompt trimmer class. Default is None.
+
+    device : torch.device, optional
+        Torch device to run the model on. Default is auto-detected.
+
+    _kwargs : dict, optional
+        Additional keyword arguments for model initialization.
+
+    Returns:
+    --------
+    HuggingfacePredictor
+        Configured Huggingface Predictor instance.
+
+    Raises:
+    -------
+    ValueError:
+        If invalid runtime or incompatible configurations are supplied.
+
+    Notes:
+    ------
+    * `_kwargs` can be modified within the function.
+    * Function logs CUDA memory before and after model instantiation for PyTorch runtime.
+    * Function may warm up models for TensorRT runtime.
+
+    Examples:
+    ---------
+    >>> predictor = _initialize_hf_model('gpt-2', AutoModelForCausalLM, config)
+    >>> predictor = _initialize_hf_model('Salesforce/codegen', AutoModelForSeq2SeqLM, config, runtime=Runtime.BETTER_TRANSFORMER)
+    """
     torch_device = _get_accelerator() if device is None else device
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -413,7 +591,7 @@ def _initialize_hf_model(
                 "Cannot run model on CUDA without CUDA. Please specify"
                 " device='cuda'."
             )
-            raise Exception(
+            raise ValueError(
                 msg,
             )
 
@@ -449,7 +627,7 @@ def _initialize_hf_model(
                 "Cannot run model on CUDA without CUDA. Please specify"
                 " device='cuda'."
             )
-            raise Exception(
+            raise ValueError(
                 msg,
             )
 
@@ -486,7 +664,7 @@ def _initialize_hf_model(
         )
     else:
         msg = "Invalid Runtime provided."
-        raise Exception(msg)
+        raise ValueError(msg)
 
     # Some models do not have a pad token, default to 0
     if not tokenizer.pad_token_id:
@@ -514,12 +692,40 @@ def _initialize_hf_model(
 
 
 def _warmup_model(predictor: HuggingfacePredictor):
+    """
+    Warms up a given Huggingface predictor model by running predictions.
+    The purpose of this is primarily to build TensorRT kernels for various
+    input sizes, as otherwise they would be built on the fly, causing
+    significant delay.
+
+    Parameters:
+    -----------
+    predictor : HuggingfacePredictor
+        Instance of a Huggingface predictor class.
+
+    Notes:
+    ------
+    * Performs a small prediction using a single '!' as prompt.
+    * Verifies if token limit is respected by attempting a long token string.
+    * Both predictions are done with cache disabled, temperature at 0 and max_tokens set to 1.
+
+    Raises:
+    -------
+    ValueError:
+        If token limit is not respected.
+
+    Examples:
+    ---------
+    >>> predictor = _initialize_hf_model('gpt-2', AutoModelForCausalLM, config)
+    >>> _warmup_model(predictor)
+    """
     raise NotImplementedError("Model warmup is not support yet.")
     small_prompt = LmPrompt("!", cache=False, temperature=0, max_tokens=1)
     predictor.predict(small_prompt)
 
     single_token = predictor.tokenize("Hello")[0]
     long_prompt_str = single_token * (predictor.token_limit - 1)
-    assert predictor.tokenize(long_prompt_str) == (predictor.token_limit - 1)
+    if predictor.tokenize(long_prompt_str) != (predictor.token_limit - 1):
+        raise ValueError("Prompt too long.")
     long_prompt = LmPrompt(long_prompt_str, cache=False, temperature=0, max_tokens=1)
     predictor.predict(long_prompt)
