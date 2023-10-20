@@ -1,5 +1,5 @@
 from lmwrapper.prompt_trimming import HfTokenTrimmer
-from lmwrapper.util import StrEnum
+from lmwrapper.utils import StrEnum
 
 import pytest
 import torch

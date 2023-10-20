@@ -5,3 +5,4 @@ diskcache
 joblib~=1.1
 tiktoken~=0.4
 ratemate~=0.1
+humanize~=4.8.0

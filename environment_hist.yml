@@ -1,0 +1,27 @@
+name: lmwrapper
+channels:
+  - conda-forge
+  - pytorch
+  - huggingface
+  - nvidia
+dependencies:
+  - python==3.11
+  - openai
+  - termcolor
+  - diskcache
+  - joblib
+  - tiktoken
+  - transformers
+  - pytest
+  - pytorch::pytorch
+  - humanize
+  - black
+  - ruff
+  - onnx
+  - datasets
+  - evaluate
+  - peft
+  - optimum
+  - onnxruntime
+  pip:
+    - bitsandbytes

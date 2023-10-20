@@ -1,3 +1,2 @@
 transformers>=4.33.2
 torch>=2.0
-humanize>=4.8.0
