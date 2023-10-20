@@ -1,5 +1,5 @@
-import os
 from abc import abstractmethod
+import os
 from pathlib import Path
 
 
@@ -7,9 +7,7 @@ def assert_is_a_secret(secret, name: str = None):
     if name is None:
         name = "secret"
     if isinstance(secret, str):
-        raise ValueError(
-            f"Don't hardcode the {name}! Use a SecretInterface instead.",
-        )
+        raise ValueError(f"Don't hardcode the {name}! Use a SecretInterface instead.")
     assert hasattr(secret, "get_secret"), f"{name} must be a SecretInterface"
 
 

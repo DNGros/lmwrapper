@@ -7,7 +7,7 @@ py-modules = ["lmwrapper"]
 
 [project]
 name = "lmwrapper"
-version = "0.6.3"
+version = "0.6.2"
 authors = [
     { name = "David Gros", email = "DNGros@users.noreply.github.com" },
     { name = "Claudio Spiess", email = "claudiosv@users.noreply.github.com" },
@@ -45,10 +45,6 @@ ort-gpu = ["optimum[onnxruntime-gpu]~=1.13.2"]
 
 [project.urls]
 "Homepage" = "https://github.com/DNGros/lmwrapper"
-
-[tool.black]
-line-length = 80
-target-version = ['py311']
 
 [tool.ruff]
 fix-only = true
