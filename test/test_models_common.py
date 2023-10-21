@@ -49,7 +49,7 @@ def test_simple_pred_cache(lm):
     runtimes = []
     import time
 
-    for i in range(2):
+    for _i in range(2):
         start = time.time()
         out = lm.predict(
             LmPrompt(

@@ -5,7 +5,6 @@ import time
 import warnings
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional, Union
 
 import openai.error
 import tiktoken
@@ -39,10 +38,12 @@ class OpenAiLmPrediction(LmPrediction):
 
     def _all_toks(self):
         if not self.prompt.logprobs:
+            msg = (
+                "This property is only available when the prompt `logprobs` flag is set"
+                " (openai endpoint only will return tokens when logprobs is set)"
+            )
             raise ValueError(
-                "This property is only available when the prompt "
-                "`logprobs` flag is set (openai endpoint only will "
-                "return tokens when logprobs is set)",
+                msg,
             )
         return self.metad["logprobs"]["tokens"]
 
@@ -71,8 +72,9 @@ class OpenAiLmPrediction(LmPrediction):
 
     def _verify_echo(self):
         if not self.prompt.echo:
+            msg = "This property is only available when the prompt `echo` flag is set"
             raise ValueError(
-                "This property is only available when the prompt `echo` flag is set",
+                msg,
             )
 
     @property
@@ -127,7 +129,7 @@ class OpenAIPredictor(LmPredictor):
         self,
         api: openai,
         engine_name: str,
-        chat_mode: bool = None,
+        chat_mode: bool | None = None,
         cache_outputs_default: bool = False,
         retry_on_rate_limit: bool = False,
     ):
@@ -148,9 +150,12 @@ class OpenAIPredictor(LmPredictor):
         info = OpenAiModelNames.name_to_info(engine_name)
         self._chat_mode = info.is_chat_model if chat_mode is None else chat_mode
         if self._chat_mode is None:
+            msg = (
+                "`chat_mode` is not provided as a parameter and cannot be inferred from"
+                " engine name"
+            )
             raise ValueError(
-                "`chat_mode` is not provided as a parameter and "
-                "cannot be inferred from engine name",
+                msg,
             )
         self._token_limit = info.token_limit if info is not None else None
         self._tokenizer = None
@@ -234,7 +239,7 @@ class OpenAIPredictor(LmPredictor):
     def _predict_maybe_cached(
         self,
         prompt: LmPrompt,
-    ) -> Union[LmPrediction, list[LmPrediction]]:
+    ) -> LmPrediction | list[LmPrediction]:
         if PRINT_ON_PREDICT:
             print("RUN PREDICT ", prompt.text[: min(10, len(prompt.text))])
 
@@ -447,7 +452,7 @@ class OpenAiModelNames(metaclass=_ModelNamesMeta):
     Will be updated with our latest model iteration."""
 
     @classmethod
-    def name_to_info(cls, name: str) -> Optional[OpenAiModelInfo]:
+    def name_to_info(cls, name: str) -> OpenAiModelInfo | None:
         if isinstance(name, OpenAiModelInfo):
             return name
         for info in cls:
@@ -459,7 +464,7 @@ class OpenAiModelNames(metaclass=_ModelNamesMeta):
 def get_open_ai_lm(
     model_name: str = OpenAiModelNames.text_ada_001,
     api_key_secret: SecretInterface = None,
-    organization: str = None,
+    organization: str | None = None,
     cache_outputs_default: bool = False,
     retry_on_rate_limit: bool = False,
 ) -> OpenAIPredictor:
@@ -468,19 +473,23 @@ def get_open_ai_lm(
         if not api_key_secret.is_readable():
             api_key_secret = SecretFile(Path("~/oai_key.txt").expanduser())
         if not api_key_secret.is_readable():
-            raise ValueError(
+            msg = (
                 "Cannot find an API key. By default the OPENAI_API_KEY environment"
                 " variable is used if it is available. Otherwise it will read from a"
                 " file at ~/oai_key.txt. Please place the key at one of the locations"
                 " or pass in a SecretInterface (like SecretEnvVar or SecretFile object)"
                 " to the api_key_secret argument.\nYou can get an API key from"
-                " https://platform.openai.com/account/api-keys",
+                " https://platform.openai.com/account/api-keys"
+            )
+            raise ValueError(
+                msg,
             )
     assert_is_a_secret(api_key_secret)
     import openai
 
     if not api_key_secret.is_readable():
-        raise ValueError("API key is not defined")
+        msg = "API key is not defined"
+        raise ValueError(msg)
     openai.api_key = api_key_secret.get_secret().strip()
     if organization:
         openai.organization = organization

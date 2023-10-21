@@ -1,5 +1,4 @@
 from abc import abstractmethod
-from typing import Optional, Union
 
 from ratemate import RateLimit
 
@@ -8,7 +7,7 @@ from lmwrapper.structs import LmPrediction, LmPrompt
 
 
 class LmPredictor:
-    _rate_limit: Optional[RateLimit] = None
+    _rate_limit: RateLimit | None = None
 
     def __init__(
         self,
@@ -19,7 +18,7 @@ class LmPredictor:
 
     def predict(
         self,
-        prompt: Union[str, LmPrompt],
+        prompt: str | LmPrompt,
     ) -> LmPrediction:
         prompt = self._cast_prompt(prompt)
         should_cache = self._cache_default if prompt.cache is None else prompt.cache
@@ -39,7 +38,7 @@ class LmPredictor:
 
     def remove_prompt_from_cache(
         self,
-        prompt: Union[str, LmPrompt],
+        prompt: str | LmPrompt,
     ) -> bool:
         return self._disk_cache.delete(self._cache_key_for_prompt(prompt))
 
@@ -55,10 +54,10 @@ class LmPredictor:
     def _predict_maybe_cached(
         self,
         prompt: LmPrompt,
-    ) -> Union[LmPrediction, list[LmPrediction]]:
+    ) -> LmPrediction | list[LmPrediction]:
         pass
 
-    def _cast_prompt(self, prompt: Union[str, LmPrompt]) -> LmPrompt:
+    def _cast_prompt(self, prompt: str | LmPrompt) -> LmPrompt:
         if isinstance(prompt, str):
             return LmPrompt(prompt, 100)
         return prompt
@@ -88,7 +87,8 @@ class LmPredictor:
         raise NotImplementedError
 
     def tokenize(self, input_str: str) -> list[str]:
-        raise NotImplementedError("This predictor does not implement tokenization")
+        msg = "This predictor does not implement tokenization"
+        raise NotImplementedError(msg)
 
     def configure_global_ratelimit(
         self,

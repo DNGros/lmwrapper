@@ -29,14 +29,13 @@ def get_github_file_var(url, var_name):
 def get_cost_dict_from_langchain() -> dict[str, float]:
     url = "https://raw.githubusercontent.com/hwchase17/langchain/master/langchain/callbacks/openai_info.py"
     var = "MODEL_COST_PER_1K_TOKENS"
-    value = get_github_file_var(url, var)
-    return value
+    return get_github_file_var(url, var)
 
 
 def get_all_max_tokens():
     for model_name in OpenAiModelNames:
         print("model_name = ", model_name)
-        lm = get_open_ai_lm(model_name)
+        get_open_ai_lm(model_name)
 
 
 if __name__ == "__main__":

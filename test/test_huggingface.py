@@ -239,6 +239,7 @@ def test_stop_n_codegen2():
     )
     outb = lm.predict(prompt_n)
 
+    assert len(outa.completion_tokens) > 1
     assert len(outb.completion_tokens) > 1
 
 

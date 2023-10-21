@@ -1,10 +1,10 @@
 import inspect
 import logging
 from functools import cached_property
+from typing import TYPE_CHECKING
 
 import torch
 from transformers import GenerationConfig, PreTrainedModel, PreTrainedTokenizerFast
-from transformers.generation.utils import GenerateOutput
 from transformers.utils.generic import TensorType
 
 from lmwrapper._TokenStoppingCriteria import _TokenStoppingCriteria
@@ -14,6 +14,9 @@ from lmwrapper.prompt_trimming import PromptTrimmer
 from lmwrapper.runtime import Runtime
 from lmwrapper.structs import LmPrediction, LmPrompt
 from lmwrapper.utils import log_cuda_mem
+
+if TYPE_CHECKING:
+    from transformers.generation.utils import GenerateOutput
 
 
 def _gather_logprobs_from_logits(
@@ -54,14 +57,17 @@ class HuggingfacePredictor(LmPredictor):
         prompt: LmPrompt,
     ) -> LmPrediction | list[LmPrediction]:
         if not isinstance(prompt.text, str) and len(prompt.text) != 1:
+            msg = "Prompt batches other than size 1 are not supported."
             raise NotImplementedError(
-                "Prompt batches other than size 1 are not supported.",
+                msg,
             )
 
         if prompt.echo and not self.allow_patch_model_forward:
+            msg = (
+                "Prompt echo is only supported with `allow_patch_model_forward` = True."
+            )
             raise NotImplementedError(
-                "Prompt echo is only supported with `allow_patch_model_forward` ="
-                " True.",
+                msg,
             )
 
         patch_model_forward = False
@@ -69,27 +75,33 @@ class HuggingfacePredictor(LmPredictor):
             patch_model_forward = prompt.echo
 
         if prompt.logprobs > 1:
-            raise NotImplementedError(
+            msg = (
                 "Retrieving more than 1 logprob is not yet supported for HuggingFace"
-                " models.",
+                " models."
+            )
+            raise NotImplementedError(
+                msg,
             )
 
         if prompt.logprobs and prompt.top_p != 1.0:
             logging.warning("Logprobs may not be correct if top_p != 1.0")
 
         if prompt.presence_penalty != 0.0:
-            raise NotImplementedError("Presence penalty not implemented")
+            msg = "Presence penalty not implemented"
+            raise NotImplementedError(msg)
 
         if prompt.text == "" and not prompt.add_bos_token:
+            msg = "Cannot do unconditional generation without `add_bos_token`."
             raise Exception(
-                "Cannot do unconditional generation without `add_bos_token`.",
+                msg,
             )
 
         is_encoder_decoder = self._model.config.is_encoder_decoder
 
         if is_encoder_decoder and prompt.add_bos_token:
+            msg = "Encoder/decoder models should not have bos tokens added manually."
             raise Exception(
-                "Encoder/decoder models should not have bos tokens added manually.",
+                msg,
             )
 
         if prompt.add_bos_token:
@@ -113,13 +125,17 @@ class HuggingfacePredictor(LmPredictor):
 
         if len(encoded_input.input_ids) > max_length:
             if self.prompt_trimmer:
-                raise ValueError(
+                msg = (
                     "Prompt is too long for model. Please check that the provided"
-                    " trimmer is configured correctly.",
+                    " trimmer is configured correctly."
+                )
+                raise ValueError(
+                    msg,
                 )
             else:
+                msg = "Prompt is too long for model. Please pass in a trimmer."
                 raise ValueError(
-                    "Prompt is too long for model. Please pass in a trimmer.",
+                    msg,
                 )
 
         if is_encoder_decoder:
@@ -334,7 +350,8 @@ class HuggingfacePredictor(LmPredictor):
         # Original: self._tokenizer.convert_ids_to_tokens(output_sequence)
         output_tokens = [self._tokenizer.decode(t) for t in output_sequence]
         if len(output_tokens) != len(output_sequence):
-            raise Exception("Output token length did not match output sequence length!")
+            msg = "Output token length did not match output sequence length!"
+            raise Exception(msg)
 
         if prompt.add_bos_token:
             output_tokens = output_tokens[1:]
@@ -438,6 +455,7 @@ class HuggingfacePredictor(LmPredictor):
                 return value.detach().cpu().numpy()
             if isinstance(value, tuple):
                 return tuple([numpy_tuple(v) for v in value])
+            return None
 
         for key, value in generation_output.items():
             updated_output[key] = numpy_tuple(value)

@@ -13,7 +13,7 @@ LM_CHAT_DIALOG_COERCIBLE_TYPES = Union[
 
 @dataclass(frozen=True)
 class LmPrompt:
-    text: Union[str, LM_CHAT_DIALOG_COERCIBLE_TYPES]
+    text: str | LM_CHAT_DIALOG_COERCIBLE_TYPES
     """The actual text of the prompt. If it is a LM_CHAT_DIALOG_COERCIBLE_TYPES
     which can become a LmChatDialog (such as a list of strings) it will be converted
     into a LmChatDialog."""
@@ -87,34 +87,46 @@ class LmPrompt:
 
     def __post_init__(self):
         if self.max_tokens is not None and not isinstance(self.max_tokens, int):
-            raise ValueError("The max_tokens parameter should be an int.")
+            msg = "The max_tokens parameter should be an int."
+            raise ValueError(msg)
         if self.stop is not None:
             if not isinstance(self.stop, list):
+                msg = "The stop parameter should be a list of strings on where to stop."
                 raise ValueError(
-                    "The stop parameter should be a list of strings on where to stop.",
+                    msg,
                 )
             if not all(isinstance(x, str) for x in self.stop):
+                msg = "The stop parameter should be a list of strings on where to stop."
                 raise ValueError(
-                    "The stop parameter should be a list of strings on where to stop.",
+                    msg,
                 )
         if isinstance(self.temperature, int):
             object.__setattr__(self, "temperature", float(self.temperature))
         if not isinstance(self.temperature, float):
-            raise ValueError("The temperature parameter should be a float.")
+            msg = "The temperature parameter should be a float."
+            raise ValueError(msg)
         if self.temperature < 0.0:
-            raise ValueError("The temperature parameter should be a positive float.")
+            msg = "The temperature parameter should be a positive float."
+            raise ValueError(msg)
         if not isinstance(self.top_p, float):
-            raise ValueError("The top_p parameter should be a float.")
+            msg = "The top_p parameter should be a float."
+            raise ValueError(msg)
         if not isinstance(self.presence_penalty, float):
-            raise ValueError("The presence_penalty parameter should be a float.")
+            msg = "The presence_penalty parameter should be a float."
+            raise ValueError(msg)
         if not isinstance(self.num_completions, int):
-            raise ValueError("The num_completions parameter should be an int.")
+            msg = "The num_completions parameter should be an int."
+            raise ValueError(msg)
         if self.cache is not None and not isinstance(self.cache, bool):
-            raise ValueError("The cache parameter should be a bool.")
+            msg = "The cache parameter should be a bool."
+            raise ValueError(msg)
         if self.logprobs is not None and not isinstance(self.logprobs, int):
-            raise ValueError(
+            msg = (
                 "The logprob parameter should be int denoting number of probs return,"
-                " or None.",
+                " or None."
+            )
+            raise ValueError(
+                msg,
             )
 
     def is_text_a_chat(self) -> bool:
@@ -176,9 +188,12 @@ class LmChatDialog(list[LmChatTurn]):
                 case LmChatTurn(role=observe_role, content=content):
                     out.append(turn)
                 case _:
-                    raise ValueError(
+                    msg = (
                         f"Invalid type for text: {type(turn)}. It should be a tuple of"
-                        " strings (role, content) or a LmChatTurn.",
+                        " strings (role, content) or a LmChatTurn."
+                    )
+                    raise ValueError(
+                        msg,
                     )
             current_role = (
                 ChatGptRoles.user
@@ -218,58 +233,67 @@ class LmPrediction:
 
     def _verify_logprobs(self):
         if self.prompt.logprobs is None or self.prompt.logprobs == 0:
+            msg = "This property is not available unless the prompt logprobs is set"
             raise ValueError(
-                "This property is not available unless the prompt logprobs is set",
+                msg,
             )
 
     @property
     def completion_tokens(self) -> list[str]:
+        msg = "This version of prediction does not support completion tokens"
         raise NotImplementedError(
-            "This version of prediction does not support completion tokens",
+            msg,
         )
 
     @property
     def completion_token_offsets(self):
+        msg = "This version of prediction does not support completion token offsets"
         raise NotImplementedError(
-            "This version of prediction does not support completion token offsets",
+            msg,
         )
 
     @property
     def completion_logprobs(self) -> list[float]:
+        msg = "This version of prediction does not support completion logprobs"
         raise NotImplementedError(
-            "This version of prediction does not support completion logprobs",
+            msg,
         )
 
     @property
     def prompt_tokens(self):
+        msg = "This version of prediction does not support prompt tokens"
         raise NotImplementedError(
-            "This version of prediction does not support prompt tokens",
+            msg,
         )
 
     @property
     def prompt_token_offsets(self):
+        msg = "This version of prediction does not support prompt token offsets"
         raise NotImplementedError(
-            "This version of prediction does not support prompt token offsets",
+            msg,
         )
 
     @property
     def prompt_logprobs(self):
+        msg = "This version of prediction does not support prompt logprobs"
         raise NotImplementedError(
-            "This version of prediction does not support prompt logprobs",
+            msg,
         )
 
     def get_full_text(self):
         return self.prompt.text + self.completion_text
 
     def get_full_tokens(self):
+        msg = "This version of prediction does not support full tokens"
         raise NotImplementedError(
-            "This version of prediction does not support full tokens",
+            msg,
         )
 
     @property
     def full_logprobs(self):
+        msg = "This version of prediction does not support full logprobs"
         raise NotImplementedError(
-            "This version of prediction does not support full logprobs",
+            msg,
         )
 
     def completion_mean_logprob(self):

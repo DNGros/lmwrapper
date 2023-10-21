@@ -1,3 +1,4 @@
+import sys
 import warnings
 
 import pytest
@@ -111,7 +112,7 @@ def test_ratelimit():
 
 def main():
     play_with_probs()
-    exit()
+    sys.exit()
     lm = get_open_ai_lm()
     clear_cache_dir()
     text = lm.predict(
@@ -134,7 +135,7 @@ def main():
     )
     print(new_text.completion_text)
     assert text.completion_text == new_text.completion_text
-    exit()
+    sys.exit()
     lm = get_open_ai_lm()
     text = lm.predict(
         LmPrompt(
@@ -223,7 +224,7 @@ def test_instantiation_hook():
 
         OpenAIPredictor.add_instantiation_hook(SimpleHook())
         assert not was_called
-        model = get_open_ai_lm()
+        get_open_ai_lm()
         assert was_called
     finally:
         OpenAIPredictor._instantiation_hooks = []

@@ -42,7 +42,8 @@ class _TokenStoppingCriteria(StoppingCriteria):
         **kwargs,
     ) -> bool:
         if input_ids.shape[0] != 1:
-            raise NotImplementedError("Batches greater than size 1 are not supported.")
+            msg = "Batches greater than size 1 are not supported."
+            raise NotImplementedError(msg)
 
         input_ids_list = input_ids[0]
         if self.decode:

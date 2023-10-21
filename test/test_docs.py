@@ -14,8 +14,7 @@ cur_file = Path(__file__).parent.absolute()
 def extract_code_blocks(file):
     with open(file) as f:
         content = f.read()
-    code_blocks = re.findall(r"```python\r?\n(.*?)```", content, re.DOTALL)
-    return code_blocks
+    return re.findall(r"```python\r?\n(.*?)```", content, re.DOTALL)
 
 
 @pytest.mark.parametrize(
