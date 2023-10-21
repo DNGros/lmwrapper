@@ -16,6 +16,7 @@ class Models(StrEnum):
     CodeGen2_3_7B = "Salesforce/codegen2-3_7B"
     InstructCodeT5plus_16B = "Salesforce/instructcodet5p-16b"
     CodeLLama_7B = "codellama/CodeLlama-7b-hf"
+    CodeLLama_7B_Instruct = "codellama/CodeLlama-7b-Instruct-hf"
     DistilGPT2 = "distilgpt2"
     GPT2 = "gpt2"
 
@@ -31,21 +32,76 @@ BIG_MODELS = BIG_SEQ2SEQ_MODELS | BIG_CAUSAL_MODELS
 ALL_MODELS = SEQ2SEQ_MODELS | CAUSAL_MODELS | BIG_MODELS
 
 
-@pytest.mark.skip()
-def test_code_llama():
+@pytest.mark.slow()
+@pytest.mark.parametrize("model", [Models.CodeLLama_7B, Models.CodeLLama_7B_Instruct])
+def test_code_llama(model):
+    prompt1 = '''def remove_non_ascii(s: str) -> str:
+    """ <FILL_ME>
+    return result
+'''
     prompt = LmPrompt(
-        "print('Hello world",
-        max_tokens=15,
+        prompt1,
+        max_tokens=200,
         cache=False,
         temperature=0,
     )
     lm = get_huggingface_lm(
-        Models.CodeLLama_7B,
+        model,
         runtime=Runtime.PYTORCH,
         trust_remote_code=True,
         precision=torch.float16,
+        device="cuda:3"
     )
     out = lm.predict(prompt)
+    print(out.completion_text)
+    assert out.completion_text
+
+    user = "In Bash, how do I list all text files in the current directory (excluding subdirectories) that have been modified in the last month?"
+
+    prompt2 = f"<s>[INST] {user.strip()} [/INST]"
+
+    prompt = LmPrompt(
+        prompt2,
+        max_tokens=200,
+        cache=False,
+        temperature=0,
+        add_special_tokens=False,
+    )
+
+    out = lm.predict(prompt)
+    print(out.completion_text)
+    assert out.completion_text
+
+    system = "Provide answers in JavaScript"
+    user = "Write a function that computes the set of sums of all contiguous sublists of a given list."
+
+    prompt3 = f"<s>[INST] <<SYS>>\\n{system}\\n<</SYS>>\\n\\n{user}[/INST]"
+
+    prompt = LmPrompt(
+        prompt3,
+        max_tokens=200,
+        cache=False,
+        temperature=0,
+        add_special_tokens=False,
+    )
+
+    out = lm.predict(prompt)
+    print(out.completion_text)
+    assert out.completion_text
+
+    prompt4 = "def fibonacci("
+
+    prompt = LmPrompt(
+        prompt4,
+        max_tokens=100,
+        cache=False,
+        temperature=0,
+        skip_special_tokens=True,
+        add_special_tokens=False,
+    )
+
+    out = lm.predict(prompt)
+    print(out.completion_text)
     assert out.completion_text
 
 
