@@ -54,8 +54,7 @@ def test_code_llama_autoregressive(model):
     )
 
     out = lm.predict(prompt)
-    print(out.completion_text)
-    assert out.completion_text
+    assert out.completion_text == "n):\n"
 
 
 @pytest.mark.slow()
@@ -85,8 +84,7 @@ def test_code_llama_infill(model):
     )
 
     out = lm.predict(prompt)
-    print(out.completion_text)
-    assert out.completion_text
+    assert out.completion_text == "Remove non-"
 
 
 @pytest.mark.slow()
@@ -118,8 +116,7 @@ def test_code_llama_conversation(model):
     )
 
     out = lm.predict(prompt)
-    print(out.completion_text)
-    assert out.completion_text
+    assert out.completion_text == " You can"
 
     system = "Provide answers in JavaScript"
     user = (
@@ -140,8 +137,7 @@ def test_code_llama_conversation(model):
     )
 
     out = lm.predict(prompt)
-    print(out.completion_text)
-    assert out.completion_text
+    assert out.completion_text == " ```\n"
 
 
 @pytest.mark.slow()
