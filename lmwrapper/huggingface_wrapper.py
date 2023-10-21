@@ -86,6 +86,7 @@ except ImportError:
 _FLASH_ATTENTION_AVAILABLE = False
 try:
     from transformers.utils.import_utils import is_flash_attn_available
+
     _FLASH_ATTENTION_AVAILABLE = is_flash_attn_available()
 except ImportError:
     pass
@@ -160,7 +161,10 @@ def _get_accelerator() -> torch.device:
             # If quantization is enabled and bits and bytes is not
             # compiled with CUDA, things don't work right
             if not bitsandbytes.COMPILED_WITH_CUDA:
-                raise Exception("Quantization was enabled but `bitsandbytes` is not compiled with CUDA.")
+                raise Exception(
+                    "Quantization was enabled but `bitsandbytes` is not compiled with"
+                    " CUDA.",
+                )
         return torch.device("cuda")
 
     if _MPS_ENABLED and torch.backends.mps.is_available():
@@ -256,7 +260,9 @@ def get_huggingface_lm(
     )
     has_vocab_size = "vocab_size" in model_config_dict
     has_decoder = "decoder" in model_config_dict
-    has_decoder_vocab_size = has_decoder and "vocab_size" in model_config_dict["decoder"]
+    has_decoder_vocab_size = (
+        has_decoder and "vocab_size" in model_config_dict["decoder"]
+    )
 
     # Addresses a bug in Transformers
     # Model transitions i.e. logprobs cannot be calculated if
@@ -375,7 +381,9 @@ def _configure_model(
     elif model.startswith("codellama/CodeLlama-"):
         _kwargs |= {
             "low_cpu_mem_usage": True,
-            "use_flash_attention_2": _FLASH_ATTENTION_AVAILABLE, # Use Flash Attention if available
+            "use_flash_attention_2": (
+                _FLASH_ATTENTION_AVAILABLE
+            ),  # Use Flash Attention if available
         }
 
     return model_class, _kwargs
@@ -545,7 +553,7 @@ def _initialize_hf_model(
             pretrained_model_name_or_path=model_name,
             config=model_config,
             torch_dtype=precision,
-            device_map=torch_device, # Initialize on device
+            device_map=torch_device,  # Initialize on device
             **_kwargs,
         )
         logging.debug("Post model instantiation")
