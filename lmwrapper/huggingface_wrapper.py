@@ -22,6 +22,8 @@ except ImportError:
         msg,
     )
 
+_QUANT_CONFIG = False
+
 if _QUANTIZATION_ENABLED:
     try:
         import bitsandbytes
