@@ -91,7 +91,7 @@ def test_simple_chat_mode_multiturn():
     ))
     assert out.completion_text.strip() == "5"
 
-@pytest.mark.skip()
+@pytest.mark.skip(reason="Rate limiting was changed from static to instance.")
 def test_ratelimit():
     try:
         OpenAIPredictor.configure_global_ratelimit(1, per_seconds=2)

@@ -161,6 +161,15 @@ class HuggingfacePredictor(LmPredictor):
             # "repetition_penalty": prompt.frequency_penalty # The parameter for repetition penalty. 1.0 means no penalty
         }
 
+        if self._tokenizer.pad_token_id is not None:
+            generation_kwargs["pad_token_id"] = self._tokenizer.pad_token_id
+
+        if self._tokenizer.eos_token_id is not None:
+            generation_kwargs["eos_token_id"] = self._tokenizer.eos_token_id
+
+        if self._tokenizer.bos_token_id is not None:
+            generation_kwargs["bos_token_id"] = self._tokenizer.bos_token_id
+
         # Temperature cannot be set if do_sample is False
         # do_sample is False if prompt.temperature == 0
         # Otherwise you get the following error from HuggingFace:
@@ -197,9 +206,6 @@ class HuggingfacePredictor(LmPredictor):
             ),
             return_dict_in_generate=True,
             output_scores=need_log_prob,
-            pad_token_id=self._tokenizer.pad_token_id,
-            eos_token_id=self._tokenizer.eos_token_id,
-            bos_token_id=self._tokenizer.bos_token_id,
             **generation_kwargs,
         )
 
@@ -211,14 +217,14 @@ class HuggingfacePredictor(LmPredictor):
             #   require calling the model again https://discuss.huggingface.co/t/announcement-generation-get-probabilities-for-generated-output/30075/17
             # Instead we are going to patch the model forward to log calls
             old_forward = self._model.forward
-            cached_logits = []
+            cached_logits = torch.zeros(0)
 
             if model_requires_attention_mask:
 
                 def new_call(attention_mask, *args, **kwargs):
                     nonlocal cached_logits
                     val = old_forward(attention_mask=attention_mask, *args, **kwargs)
-                    cached_logits.append(val.logits.detach())
+                    cached_logits = val.logits
                     return val
 
             else:
@@ -226,7 +232,7 @@ class HuggingfacePredictor(LmPredictor):
                 def new_call(*args, **kwargs):
                     nonlocal cached_logits
                     val = old_forward(*args, **kwargs)
-                    cached_logits.append(val.logits.detach())
+                    cached_logits = val.logits
                     return val
 
             self._model.forward = new_call
@@ -339,11 +345,10 @@ class HuggingfacePredictor(LmPredictor):
                 assert prompt.echo
                 assert not is_encoder_decoder
 
-                all_logits = torch.cat(cached_logits, dim=1)
-                assert all_logits.shape[0] == 1  # batch
-                assert all_logits.shape[1] == len(model_output_sequence[1:])
+                assert cached_logits.shape[0] == 1  # batch
+                assert cached_logits.shape[1] == len(model_output_sequence[1:])
                 output_logprobs = _gather_logprobs_from_logits(
-                    all_logits[0],
+                    cached_logits[0],
                     model_output_sequence[1:],
                 )
 
@@ -352,7 +357,6 @@ class HuggingfacePredictor(LmPredictor):
                 # Free memory
                 del output_logprobs
                 del cached_logits
-                del all_logits
 
                 assert len(model_output_sequence[1:]) == len(logprobs)
                 if stop_token_idx_output and stop_token_idx_output > 0:
