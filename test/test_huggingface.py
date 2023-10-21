@@ -35,6 +35,14 @@ ALL_MODELS = SEQ2SEQ_MODELS | CAUSAL_MODELS | BIG_MODELS
 @pytest.mark.slow()
 @pytest.mark.parametrize("model", [Models.CodeLLama_7B, Models.CodeLLama_7B_Instruct])
 def test_code_llama(model):
+    lm = get_huggingface_lm(
+        model,
+        runtime=Runtime.PYTORCH,
+        trust_remote_code=True,
+        precision=torch.float16,
+        device="cuda",
+    )
+
     prompt1 = '''def remove_non_ascii(s: str) -> str:
     """ <FILL_ME>
     return result
@@ -44,14 +52,10 @@ def test_code_llama(model):
         max_tokens=200,
         cache=False,
         temperature=0,
+        add_bos_token=False,
+        logprobs=1,
     )
-    lm = get_huggingface_lm(
-        model,
-        runtime=Runtime.PYTORCH,
-        trust_remote_code=True,
-        precision=torch.float16,
-        device="cuda:3"
-    )
+
     out = lm.predict(prompt)
     print(out.completion_text)
     assert out.completion_text
@@ -66,6 +70,8 @@ def test_code_llama(model):
         cache=False,
         temperature=0,
         add_special_tokens=False,
+        add_bos_token=False,
+        logprobs=1,
     )
 
     out = lm.predict(prompt)
@@ -83,6 +89,8 @@ def test_code_llama(model):
         cache=False,
         temperature=0,
         add_special_tokens=False,
+        add_bos_token=False,
+        logprobs=1,
     )
 
     out = lm.predict(prompt)
@@ -97,6 +105,8 @@ def test_code_llama(model):
         cache=False,
         temperature=0,
         add_special_tokens=False,
+        add_bos_token=False,
+        logprobs=1,
     )
 
     out = lm.predict(prompt)
