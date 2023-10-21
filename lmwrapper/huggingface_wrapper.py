@@ -375,7 +375,6 @@ def _configure_model(
     elif model.startswith("codellama/CodeLlama-"):
         _kwargs |= {
             "low_cpu_mem_usage": True,
-            "device_map": "auto" if runtime == Runtime.ACCELERATE else None,
             "use_flash_attention_2": _FLASH_ATTENTION_AVAILABLE, # Use Flash Attention if available
         }
 
