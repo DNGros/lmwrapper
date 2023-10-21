@@ -96,7 +96,6 @@ def test_code_llama(model):
         max_tokens=100,
         cache=False,
         temperature=0,
-        skip_special_tokens=True,
         add_special_tokens=False,
     )
 
