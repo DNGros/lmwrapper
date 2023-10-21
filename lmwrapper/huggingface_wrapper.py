@@ -60,11 +60,14 @@ try:
         AutoModelForSeq2SeqLM,
         AutoTokenizer,
         PretrainedConfig,
+        AutoConfig,
         PreTrainedModel,
         PreTrainedTokenizerFast,
         T5ForConditionalGeneration,
         set_seed,
     )
+    from transformers.models.auto.modeling_auto import _BaseAutoModelClass
+
 
     set_seed(42)
 except ImportError:
@@ -112,6 +115,8 @@ if _ONNX_RUNTIME:
             msg,
         )
 
+# Types
+AutoPretrainedModelType = type[_BaseAutoModelClass | PreTrainedModel]
 
 def _get_accelerator() -> torch.device:
     """
@@ -228,14 +233,14 @@ def get_huggingface_lm(
 
     _kwargs = {"trust_remote_code": trust_remote_code}
 
-    model_config = PretrainedConfig.from_pretrained(model)
-
+    model_config: PretrainedConfig = AutoConfig.from_pretrained(model, trust_remote_code=trust_remote_code)
+    model_config_dict = model_config.to_dict()
     has_remote_code = (
-        "auto_map" in model_config and "AutoConfig" in model_config["auto_map"]
+        "auto_map" in model_config_dict and "AutoConfig" in model_config_dict["auto_map"]
     )
-    has_vocab_size = "vocab_size" in model_config
-    has_decoder = "decoder" in model_config
-    has_decoder_vocab_size = has_decoder and "vocab_size" in model_config.decoder
+    has_vocab_size = "vocab_size" in model_config_dict
+    has_decoder = "decoder" in model_config_dict
+    has_decoder_vocab_size = has_decoder and "vocab_size" in model_config_dict.decoder
 
     # Addresses a bug in Transformers
     # Model transitions i.e. logprobs cannot be calculated if
@@ -244,7 +249,7 @@ def get_huggingface_lm(
     if not has_vocab_size and has_decoder_vocab_size:
         model_config.vocab_size = model_config.decoder.vocab_size
 
-    if not trust_remote_code and has_remote_code:
+    if has_remote_code and not trust_remote_code:
         msg = (
             "The model provided has remote code and likely will not work as"
             " expected. Please call with `trust_remote_code = True` If you have"
@@ -271,7 +276,7 @@ def get_huggingface_lm(
 
 def _configure_model(
     model: str, model_config: PretrainedConfig, runtime: Runtime, _kwargs: dict
-) -> tuple[type[PreTrainedModel], dict]:
+) -> tuple[AutoPretrainedModelType, dict]:
     """
     Configure the Hugging Face model class and additional keyword arguments based on input parameters.
 
@@ -311,10 +316,10 @@ def _configure_model(
     >>> model_class, kwargs = _configure_model("gpt-2", config, Runtime.PYTORCH, {})
     >>> model_class, kwargs = _configure_model("Salesforce/codegen", config, Runtime.BETTER_TRANSFORMER, {})
     """
-    model_class = AutoModelForCausalLM
-
-    if ("auto_map" in model_config) and (
-        "AutoModelForSeq2SeqLM" in model_config["auto_map"]
+    model_class: AutoPretrainedModelType = AutoModelForCausalLM
+    model_config_dict = model_config.to_dict()
+    if ("auto_map" in model_config_dict) and (
+        "AutoModelForSeq2SeqLM" in model_config_dict["auto_map"]
     ):
         model_class = AutoModelForSeq2SeqLM
 
@@ -330,7 +335,7 @@ def _configure_model(
 
         _kwargs |= {
             "revision": "main",
-            "use_cache": False,
+            # "use_cache": False,
         }
     elif model.startswith("Salesforce/codet5") and not model.endswith("b"):
         model_class = T5ForConditionalGeneration
@@ -351,6 +356,8 @@ def _configure_model(
     elif model.startswith("codellama/CodeLlama-"):
         _kwargs |= {
             "low_cpu_mem_usage": True,
+            "device_map": "auto",
+            "load_in_8bit": True
         }
 
 
@@ -445,7 +452,7 @@ def get_huggingface_predictor(
 
 def _initialize_hf_model(
     model_name: str,
-    model_class: PreTrainedModel,
+    model_class: AutoPretrainedModelType,
     model_config: PretrainedConfig,
     runtime: Runtime = Runtime.PYTORCH,
     precision: torch.dtype | Literal["auto"] = "auto",

@@ -3,7 +3,7 @@ from transformers import PreTrainedModel, AutoModelForSeq2SeqLM
 from transformers.models.auto.modeling_auto import _BaseAutoModelClass
 
 
-class HuggingFaceModel(ABC):
+class HuggingFaceModelWrappingConfig(ABC):
     model_name: str
     model_class: type[PreTrainedModel | _BaseAutoModelClass]
     supports_bettertransformers: bool = True
@@ -11,16 +11,16 @@ class HuggingFaceModel(ABC):
     unsupported_kwargs: list
 
 
-class _BigModelMixin(HuggingFaceModel):
+class _BigModelMixin(HuggingFaceModelWrappingConfig):
     def __init__(self) -> None:
         self.model_kwargs |= {"low_cpu_mem_usage": True}
 
 
-class _AutoModel(HuggingFaceModel):
+class _AutoModel(HuggingFaceModelWrappingConfig):
     ...
 
 
-class _PreTrainedModel(HuggingFaceModel):
+class _PreTrainedModel(HuggingFaceModelWrappingConfig):
     unsupported_kwargs = ["trust_remote_code"]
     """Trust remote code is only usable in AutoModel classes."""
 

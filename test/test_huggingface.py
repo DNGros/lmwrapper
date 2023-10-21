@@ -46,7 +46,7 @@ def test_code_llama():
 
 @pytest.mark.slow()
 def test_trim_start():
-    lm = get_huggingface_lm(Models.CodeGen2_1B, runtime=Runtime.PYTORCH)
+    lm = get_huggingface_lm(Models.CodeGen2_1B, runtime=Runtime.PYTORCH, trust_remote_code=True)
     ltrimmer = HfTokenTrimmer(2, lm._tokenizer, start_from_left_side=True)
 
     lm.prompt_trimmer = ltrimmer
@@ -64,7 +64,7 @@ def test_trim_start():
 
 @pytest.mark.slow()
 def test_logprobs_codegen2():
-    lm = get_huggingface_lm(Models.CodeGen2_1B, runtime=Runtime.PYTORCH)
+    lm = get_huggingface_lm(Models.CodeGen2_1B, runtime=Runtime.PYTORCH, trust_remote_code=True)
     prompt = LmPrompt(
         "def hello_world():\n   print('",
         max_tokens=15,
@@ -176,7 +176,7 @@ def test_stop_n_codet5():
 
 @pytest.mark.slow()
 def test_stop_n_codegen2():
-    lm = get_huggingface_lm(Models.CodeGen2_1B, runtime=Runtime.PYTORCH)
+    lm = get_huggingface_lm(Models.CodeGen2_1B, runtime=Runtime.PYTORCH, trust_remote_code=True)
     prompt = LmPrompt(
         text="def hello_world():\n",
         max_tokens=500,
@@ -214,7 +214,7 @@ def test_stop_n_codegen2():
 
 @pytest.mark.slow()
 def test_logprobs_equal_stop_codegen2():
-    lm = get_huggingface_lm(Models.CodeGen2_1B, runtime=Runtime.PYTORCH)
+    lm = get_huggingface_lm(Models.CodeGen2_1B, runtime=Runtime.PYTORCH, trust_remote_code=True)
     prompt = LmPrompt(
         "place a newline here", max_tokens=5, cache=False, temperature=0, stop=["(o(o"]
     )
@@ -250,7 +250,7 @@ def test_logprobs_equal_stop_codegen2():
 
 @pytest.mark.slow()
 def test_logprobs_echo_stop_codegen2():
-    lm = get_huggingface_lm(Models.CodeGen2_1B, runtime=Runtime.PYTORCH)
+    lm = get_huggingface_lm(Models.CodeGen2_1B, runtime=Runtime.PYTORCH, trust_remote_code=True)
     prompt = LmPrompt(
         "place a newline here",
         max_tokens=5,
@@ -550,7 +550,7 @@ def test_all_pytorch_runtime(lm: str):
         temperature=0,
         add_bos_token=lm not in SEQ2SEQ_MODELS
     )
-    lm = get_huggingface_lm(lm, runtime=Runtime.PYTORCH)
+    lm = get_huggingface_lm(lm, runtime=Runtime.PYTORCH, trust_remote_code=True)
     out = lm.predict(prompt)
     assert out.completion_text
 
