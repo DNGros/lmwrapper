@@ -696,7 +696,7 @@ def test_all_pytorch_runtime(lm: str):
 
 
 @pytest.mark.slow()
-@pytest.mark.skip()  # ORT is not ready yet
+@pytest.mark.skip(reason="ORT is not ready yet")
 @pytest.mark.parametrize("runtime", [Runtime.ORT_CPU, Runtime.ORT_CUDA])
 @pytest.mark.parametrize("lm", ALL_MODELS)
 def test_get_ort(runtime: Runtime, lm: str):
@@ -712,7 +712,7 @@ def test_get_ort(runtime: Runtime, lm: str):
 
 
 @pytest.mark.slow()
-@pytest.mark.skip()  # Better Transformer is not ready yet
+@pytest.mark.skip(reason="Better Transformer is not ready yet")
 @pytest.mark.parametrize("lm", [Models.DistilGPT2, Models.GPT2])
 def test_get_better_transformer(lm):
     prompt = LmPrompt(
@@ -727,7 +727,7 @@ def test_get_better_transformer(lm):
 
 
 @pytest.mark.slow()
-@pytest.mark.skip()  # Better Transformer is not ready yet
+@pytest.mark.skip(reason="Better Transformer is not ready yet")
 def test_codegen2_predict_bt():
     lm = Models.CodeGen2_1B
     with pytest.raises(Exception) as e_info:
@@ -736,7 +736,7 @@ def test_codegen2_predict_bt():
 
 
 @pytest.mark.slow()
-@pytest.mark.skip()  # TensorRT is not ready yet
+@pytest.mark.skip(reason="TensorRT is not ready yet")
 @pytest.mark.parametrize("lm", CAUSAL_MODELS)
 @pytest.mark.skipif(
     CUDA_UNAVAILABLE,
