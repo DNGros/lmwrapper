@@ -256,7 +256,7 @@ def get_huggingface_lm(
     )
     has_vocab_size = "vocab_size" in model_config_dict
     has_decoder = "decoder" in model_config_dict
-    has_decoder_vocab_size = has_decoder and "vocab_size" in model_config_dict.decoder
+    has_decoder_vocab_size = has_decoder and "vocab_size" in model_config_dict["decoder"]
 
     # Addresses a bug in Transformers
     # Model transitions i.e. logprobs cannot be calculated if
