@@ -79,6 +79,15 @@ except ImportError:
         msg,
     )
 
+# Flash Attention is a more efficient attention mechanism
+# available for a limited number of models, notably LLaMa/CodeLLaMa!
+_FLASH_ATTENTION_AVAILABLE = False
+try:
+    from transformers.utils.import_utils import is_flash_attn_available
+    _FLASH_ATTENTION_AVAILABLE = is_flash_attn_available()
+except ImportError:
+    pass
+
 if _ONNX_RUNTIME:
     try:
         from optimum import version as optimum_version
@@ -364,6 +373,7 @@ def _configure_model(
         _kwargs |= {
             "low_cpu_mem_usage": True,
             "device_map": "auto" if runtime == Runtime.ACCELERATE else None,
+            "use_flash_attention_2": _FLASH_ATTENTION_AVAILABLE, # Use Flash Attention if available
         }
 
     return model_class, _kwargs
@@ -644,7 +654,6 @@ def _initialize_hf_model(
             model_class.from_pretrained(
                 pretrained_model_name_or_path=model_name,
                 config=model_config,
-                device_map="auto",
                 torch_dtype=precision,
                 **_kwargs,
             ),

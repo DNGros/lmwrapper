@@ -39,6 +39,7 @@ hf-dev = [
 ]
 accelerate = ["accelerate~=0.23.0"]
 xformers = ["xformers~=0.0.22"]
+flash-attn = [ "flash_attn~=2.3.2"]
 ort = ["optimum[onnxruntime]~=1.13.2"]
 # This will also install accelerate:
 ort-gpu = ["optimum[onnxruntime-gpu]~=1.13.2"]
