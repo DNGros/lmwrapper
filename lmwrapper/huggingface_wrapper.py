@@ -154,10 +154,11 @@ def _get_accelerator() -> torch.device:
     cuda # or mps or cpu
     """
     if torch.cuda.is_available():
-        if _QUANT_CONFIG:
+        if _QUANTIZATION_ENABLED and _QUANT_CONFIG:
             # If quantization is enabled and bits and bytes is not
             # compiled with CUDA, things don't work right
-            assert bitsandbytes.COMPILED_WITH_CUDA
+            if not bitsandbytes.COMPILED_WITH_CUDA:
+                raise Exception("Quantization was enabled but `bitsandbytes` is not compiled with CUDA.")
         return torch.device("cuda")
 
     if _MPS_ENABLED and torch.backends.mps.is_available():
