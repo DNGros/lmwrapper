@@ -1,4 +1,4 @@
-from lmwrapper.Runtime import Runtime
+from lmwrapper.runtime import Runtime
 from lmwrapper.prompt_trimming import HfTokenTrimmer
 from lmwrapper.utils import StrEnum
 

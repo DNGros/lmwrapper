@@ -2,7 +2,7 @@ from importlib.metadata import version as import_version
 from pathlib import Path
 import logging
 from typing import Literal
-from lmwrapper.Runtime import Runtime
+from lmwrapper.runtime import Runtime
 from lmwrapper.utils import log_cuda_mem
 
 from packaging import version

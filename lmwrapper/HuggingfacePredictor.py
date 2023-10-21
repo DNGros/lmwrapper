@@ -1,7 +1,7 @@
 from lmwrapper.HuggingfacePrediction import HuggingfacePrediction
 from lmwrapper._TokenStoppingCriteria import _TokenStoppingCriteria
 from lmwrapper.abstract_predictor import LmPredictor
-from lmwrapper.Runtime import Runtime
+from lmwrapper.runtime import Runtime
 from lmwrapper.prompt_trimming import PromptTrimmer
 from lmwrapper.structs import LmPrediction, LmPrompt
 from lmwrapper.utils import log_cuda_mem

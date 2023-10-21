@@ -22,4 +22,4 @@ class Runtime(Enum):
     """Use ONNX Runtime with CPU as the backend runtime."""
 
     BETTER_TRANSFORMER = 6
-    """Use Better Transformer as the backend runtime."""
+    """Use BetterTransformer as the backend runtime."""
