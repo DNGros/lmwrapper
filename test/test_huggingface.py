@@ -33,25 +33,22 @@ ALL_MODELS = SEQ2SEQ_MODELS | CAUSAL_MODELS | BIG_MODELS
 
 
 @pytest.mark.slow()
-@pytest.mark.parametrize("model", [Models.CodeLLama_7B, Models.CodeLLama_7B_Instruct])
-def test_code_llama(model):
+@pytest.mark.parametrize("model", [Models.CodeLLama_7B])
+def test_code_llama_autoregressive(model):
+    """7B and 13B *base* models can be used for text/code completion"""
     lm = get_huggingface_lm(
         model,
         runtime=Runtime.PYTORCH,
         trust_remote_code=True,
         precision=torch.float16,
-        device="cuda",
     )
 
-    prompt1 = '''def remove_non_ascii(s: str) -> str:
-    """ <FILL_ME>
-    return result
-'''
     prompt = LmPrompt(
-        prompt1,
-        max_tokens=200,
+        "def fibonacci(",
+        max_tokens=3,
         cache=False,
         temperature=0,
+        add_special_tokens=False,
         add_bos_token=False,
         logprobs=1,
     )
@@ -60,13 +57,59 @@ def test_code_llama(model):
     print(out.completion_text)
     assert out.completion_text
 
-    user = "In Bash, how do I list all text files in the current directory (excluding subdirectories) that have been modified in the last month?"
 
-    prompt2 = f"<s>[INST] {user.strip()} [/INST]"
+@pytest.mark.slow()
+@pytest.mark.parametrize("model", [Models.CodeLLama_7B, Models.CodeLLama_7B_Instruct])
+def test_code_llama_infill(model):
+    """7B and 13B base *and* instruct variants support infilling based on surrounding content"""
+    lm = get_huggingface_lm(
+        model,
+        runtime=Runtime.PYTORCH,
+        trust_remote_code=True,
+        precision=torch.float16,
+    )
+
+    infill_prompt = '''def remove_non_ascii(s: str) -> str:
+    """ <FILL_ME>
+    return result
+'''
 
     prompt = LmPrompt(
-        prompt2,
-        max_tokens=200,
+        infill_prompt,
+        max_tokens=3,
+        cache=False,
+        temperature=0,
+        add_special_tokens=False,
+        add_bos_token=False,
+        logprobs=1,
+    )
+
+    out = lm.predict(prompt)
+    print(out.completion_text)
+    assert out.completion_text
+
+
+@pytest.mark.slow()
+@pytest.mark.parametrize("model", [Models.CodeLLama_7B_Instruct])
+def test_code_llama_conversation(model):
+    """Instruction fine-tuned models can be used in conversational interfaces"""
+    lm = get_huggingface_lm(
+        model,
+        runtime=Runtime.PYTORCH,
+        trust_remote_code=True,
+        precision=torch.float16,
+    )
+
+    user = (
+        "In Bash, how do I list all text files in the current directory (excluding"
+        " subdirectories) that have been modified in the last month?"
+    )
+
+    instr_prompt1 = f"<s>[INST] {user.strip()} [/INST]"
+
+    prompt = LmPrompt(
+        instr_prompt1,
+        max_tokens=3,
         cache=False,
         temperature=0,
         add_special_tokens=False,
@@ -79,29 +122,16 @@ def test_code_llama(model):
     assert out.completion_text
 
     system = "Provide answers in JavaScript"
-    user = "Write a function that computes the set of sums of all contiguous sublists of a given list."
-
-    prompt3 = f"<s>[INST] <<SYS>>\\n{system}\\n<</SYS>>\\n\\n{user}[/INST]"
-
-    prompt = LmPrompt(
-        prompt3,
-        max_tokens=200,
-        cache=False,
-        temperature=0,
-        add_special_tokens=False,
-        add_bos_token=False,
-        logprobs=1,
+    user = (
+        "Write a function that computes the set of sums of all contiguous sublists of a"
+        " given list."
     )
 
-    out = lm.predict(prompt)
-    print(out.completion_text)
-    assert out.completion_text
-
-    prompt4 = "def fibonacci("
+    instr_prompt2 = f"<s>[INST] <<SYS>>\\n{system}\\n<</SYS>>\\n\\n{user}[/INST]"
 
     prompt = LmPrompt(
-        prompt4,
-        max_tokens=100,
+        instr_prompt2,
+        max_tokens=3,
         cache=False,
         temperature=0,
         add_special_tokens=False,

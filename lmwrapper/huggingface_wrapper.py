@@ -363,8 +363,7 @@ def _configure_model(
     elif model.startswith("codellama/CodeLlama-"):
         _kwargs |= {
             "low_cpu_mem_usage": True,
-            "device_map": "auto",
-            "load_in_8bit": True,
+            "device_map": "auto" if runtime == Runtime.ACCELERATE else None,
         }
 
     return model_class, _kwargs
