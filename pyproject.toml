@@ -7,7 +7,7 @@ py-modules = ["lmwrapper"]
 
 [project]
 name = "lmwrapper"
-version = "0.6.3"
+version = "0.6.5"
 authors = [
     { name = "David Gros", email = "DNGros@users.noreply.github.com" },
     { name = "Claudio Spiess", email = "claudiosv@users.noreply.github.com" },
