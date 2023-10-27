@@ -117,6 +117,15 @@ class OpenAiLmPrediction(LmPrediction):
             )
         ]
 
+    @property
+    def top_logprobs(self) -> list[dict[str, float]]:
+        """List of dictionaries of token:logprob for each completion"""
+        if self.metad.get("logprobs", {}).get("top_logprobs", None) is None:
+            raise ValueError(
+                f"Response does not contain top_logprobs. Are you sure logprobs was set > 0? Currently: {self.prompt.logprobs}"
+            )
+        return [ dict(p) for p in self.metad["logprobs"]["top_logprobs"] ]
+
 
 class OpenAiLmChatPrediction(LmPrediction):
     pass
