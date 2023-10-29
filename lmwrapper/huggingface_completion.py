@@ -130,6 +130,10 @@ class Completion:
             msg = "Frequency_penalty parameter must be a float."
             raise ValueError(msg)
 
+        if self.frequency_penalty < -2.0 or self.frequency_penalty > 2.0:
+            msg = "Frequency penalty must be between -2.0 and 2.0"
+            raise ValueError(msg)
+
         if (
             self.logit_bias is not None
             and not isinstance(self.logit_bias, dict)
@@ -148,6 +152,10 @@ class Completion:
             msg = "Logprobs parameter must be an integer."
             raise ValueError(msg)
 
+        if self.logprobs > 5:
+            msg = "Cannot request more than 5 logprobs."
+            raise ValueError(msg)
+
         if self.max_tokens is not None and not isinstance(self.max_tokens, int):
             msg = "Max_tokens parameter must be an integer."
             raise ValueError(msg)
@@ -160,7 +168,11 @@ class Completion:
             self.presence_penalty,
             float,
         ):
-            msg = "Presence_penalty parameter must be an integer."
+            msg = "Presence_penalty parameter must be a float."
+            raise ValueError(msg)
+
+        if self.presence_penalty < -2.0 or self.presence_penalty > 2.0:
+            msg = "Presence penalty must be between -2.0 and 2.0"
             raise ValueError(msg)
 
         if (
@@ -186,8 +198,16 @@ class Completion:
             msg = "Temperature parameter must be a float."
             raise ValueError(msg)
 
+        if self.temperature < 0 or self.temperature > 2:
+            msg = "Temperature must be between 0 and 2"
+            raise ValueError(msg)
+
         if self.top_p is not None and not isinstance(self.top_p, float):
             msg = "Top_p parameter must be a float."
+            raise ValueError(msg)
+
+        if self.top_p < 0 or self.top_p > 1:
+            msg = "Top_p must be between 0 and 1."
             raise ValueError(msg)
 
         if self.n is not None and not isinstance(self.n, str):
