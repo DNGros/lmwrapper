@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68.2.2"]
+requires      = ["setuptools>=68.2.2"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -28,9 +28,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["black~=23.10.0", "ruff~=0.1.1", "pytest~=7.4.2", "pytest-cov~=4.1.0"]
+dev   = ["black~=23.10.0", "ruff~=0.1.1", "pytest~=7.4.2", "pytest-cov~=4.1.0"]
 quant = ["bitsandbytes~=0.41.1"]
-hf = ["torch~=2.1.0", "transformers~=4.34.1"]
+hf    = ["torch~=2.1.0", "transformers~=4.34.1"]
 # Torch nightlies can be installed as follows:
 # CPU: pip3 install --pre torch --index-url https://download.pytorch.org/whl/nightly/cpu
 # CUDA: pip3 install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121
@@ -40,7 +40,7 @@ hf-dev = [
 ]
 accelerate = ["accelerate~=0.23.0"]
 xformers = ["xformers~=0.0.22"]
-flash-attn = [ "flash_attn~=2.3.2"]
+flash-attn = ["flash_attn~=2.3.2"]
 ort = ["optimum[onnxruntime]~=1.13.2"]
 # This will also install accelerate:
 ort-gpu = ["optimum[onnxruntime-gpu]~=1.13.2"]
@@ -49,10 +49,11 @@ ort-gpu = ["optimum[onnxruntime-gpu]~=1.13.2"]
 "Homepage" = "https://github.com/DNGros/lmwrapper"
 
 [tool.black]
-line-length = 88
-target-version = ['py311']
+line-length    = 88
+target-version = ["py310"]
 
 [tool.ruff]
+target-version = "py310"
 fix-only = true
 line-length = 88
 select = [
