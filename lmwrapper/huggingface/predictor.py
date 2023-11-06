@@ -1,15 +1,16 @@
 import inspect
 import logging
+from collections.abc import Sequence
 from functools import cached_property
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING
 
 import torch
 from transformers import GenerationConfig, PreTrainedModel, PreTrainedTokenizerFast
 from transformers.utils.generic import TensorType
 
-from lmwrapper._TokenStoppingCriteria import _TokenStoppingCriteria
 from lmwrapper.abstract_predictor import LmPredictor
-from lmwrapper.HuggingfacePrediction import HuggingfacePrediction
+from lmwrapper.huggingface.prediction import HuggingfacePrediction
+from lmwrapper.huggingface.stopping_criteria import _StringStroppingCriteria
 from lmwrapper.prompt_trimming import PromptTrimmer
 from lmwrapper.runtime import Runtime
 from lmwrapper.structs import LmPrediction, LmPrompt
@@ -44,6 +45,7 @@ class HuggingfacePredictor(LmPredictor):
             "name_or_path": self._model.name_or_path,
         }
 
+    @torch.inference_mode
     def _predict_hf(
         self,
         prompt: LmPrompt,
@@ -254,20 +256,19 @@ class HuggingfacePredictor(LmPredictor):
         )
         if prompt.stop:
             stopping_criteria = [
-                _TokenStoppingCriteria(
+                _StringStroppingCriteria(
                     prompt.stop,
-                    decode=True,
                     tokenizer=self._tokenizer,
                     input_length=input_length,
                 ),
             ]
 
-        with torch.no_grad():
-            generation_output: GenerateOutput = self._model.generate(
-                **encoded_input,
-                generation_config=gen_config,
-                stopping_criteria=stopping_criteria,
-            )
+        generation_output: GenerateOutput = self._model.generate(
+            **encoded_input,
+            generation_config=gen_config,
+            stopping_criteria=stopping_criteria,
+        )
+
         logging.info("Generation output type:" + str(type(generation_output)))
         logging.debug("Post generate")
         log_cuda_mem()
@@ -287,7 +288,10 @@ class HuggingfacePredictor(LmPredictor):
         stop_token_idx_generated = None
 
         generated_text = self._tokenizer.decode(
-            generated_sequence, skip_special_tokens=False, clean_up_tokenization_spaces=False)
+            generated_sequence,
+            skip_special_tokens=False,
+            clean_up_tokenization_spaces=False,
+        )
         clean_generated_text = self._tokenizer.decode(
             generated_sequence,
             skip_special_tokens=True,
@@ -297,7 +301,7 @@ class HuggingfacePredictor(LmPredictor):
         if prompt.stop:
             token_offsets = _get_token_offsets(self._tokenizer, generated_sequence)
             token_offsets_full = _expand_offsets_to_a_token_index_for_every_text_index(
-                token_offsets
+                token_offsets,
             )
             if len(token_offsets_full) != len(generated_text):
                 raise RuntimeError(
@@ -305,7 +309,7 @@ class HuggingfacePredictor(LmPredictor):
                     f"Generated text: '{generated_text}'\n"
                     f"Token offsets: {token_offsets}\n"
                     f"Tokens: {self._tokenizer.convert_ids_to_tokens(generated_sequence)}\n"
-                    f"Token offsets full: {token_offsets_full}"
+                    f"Token offsets full: {token_offsets_full}",
                 )
             sorted_stop_sequences = sorted(prompt.stop, key=len, reverse=True)
 
@@ -562,7 +566,11 @@ def _get_token_offsets(
         )
 
     new_tokenize = tokenizer(
-        tokenizer.decode(token_ids, clean_up_tokenization_spaces=False, skip_special_tokens=False),
+        tokenizer.decode(
+            token_ids,
+            clean_up_tokenization_spaces=False,
+            skip_special_tokens=False,
+        ),
         return_offsets_mapping=True,
         add_special_tokens=False,
     )
@@ -587,7 +595,7 @@ def _get_token_offsets(
             new_token_ids = token_ids
             assert len(new_token_ids) == len(offset_mapping)
 
-    #starts, ends = list(zip(*offset_mapping))
+    # starts, ends = list(zip(*offset_mapping))
 
     if new_token_ids != token_ids:
         msg = f"Token IDs do not match\nOriginal: {token_ids}\nNew: {new_token_ids}"
@@ -603,7 +611,8 @@ def _attempt_to_fix_degenerate_merges(
     output_token_strs: Sequence[str],
     new_tokenization_strs: Sequence[str],
 ) -> Sequence[tuple[int, int]]:
-    """Sometimes a model might output what I'm calling 'degenerate merges'.
+    """
+    Sometimes a model might output what I'm calling 'degenerate merges'.
     Here subtokens are outputted when a different token exists that is a merged
     version of the subtokens. This is a problem because the way we get
     the tokenize offsets relies on detokenizing the output tokens and then
@@ -620,7 +629,7 @@ def _attempt_to_fix_degenerate_merges(
     if len(output_tokens) < len(new_tokenization):
         raise ValueError(
             "Cannot fix solutions when there are more new tokens than output tokens. "
-            "Expect cases where output has more because of extra unmerged tokens."
+            "Expect cases where output has more because of extra unmerged tokens.",
         )
     output_idx = 0
     new_idx = 0
@@ -648,7 +657,12 @@ def _attempt_to_fix_degenerate_merges(
                 start_offset, _ = new_tokenization_offsets[new_idx]
                 for split_idx in output_tokens_idxes_for_this_new_token:
                     output_token_str_for_this_split = output_token_strs[split_idx]
-                    output_offsets.append((start_offset, start_offset + len(output_token_str_for_this_split)))
+                    output_offsets.append(
+                        (
+                            start_offset,
+                            start_offset + len(output_token_str_for_this_split),
+                        ),
+                    )
                     start_offset += len(output_token_str_for_this_split)
             else:
                 msg = (
@@ -658,9 +672,7 @@ def _attempt_to_fix_degenerate_merges(
                     f"Original tokens: {output_token_strs}\n"
                     f"New tokens: {new_tokenization_strs}\n"
                 )
-                raise ValueError(
-                    msg
-                )
+                raise ValueError(msg)
     return output_offsets
 
 

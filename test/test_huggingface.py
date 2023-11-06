@@ -3,39 +3,28 @@ import pytest
 import torch
 
 from lmwrapper.huggingface_wrapper import get_huggingface_lm
-from lmwrapper.HuggingfacePredictor import _get_token_offsets, \
+from lmwrapper.huggingface.predictor import _get_token_offsets, \
     _expand_offsets_to_a_token_index_for_every_text_index
+from lmwrapper.huggingface.models import HuggingFaceModelNames
 from lmwrapper.prompt_trimming import HfTokenTrimmer
 from lmwrapper.runtime import Runtime
 from lmwrapper.structs import LmPrompt
 from lmwrapper.utils import StrEnum
 
 
-class Models(StrEnum):
-    CodeT5plus_220M = "Salesforce/codet5p-220m"
-    CodeT5plus_6B = "Salesforce/codet5p-6b"
-    CodeGen2_1B = "Salesforce/codegen2-1B"
-    CodeGen2_3_7B = "Salesforce/codegen2-3_7B"
-    InstructCodeT5plus_16B = "Salesforce/instructcodet5p-16b"
-    CodeLLama_7B = "codellama/CodeLlama-7b-hf"
-    CodeLLama_7B_Instruct = "codellama/CodeLlama-7b-Instruct-hf"
-    DistilGPT2 = "distilgpt2"
-    GPT2 = "gpt2"
-
-
 CUDA_UNAVAILABLE = not torch.cuda.is_available()
 SMALL_GPU = CUDA_UNAVAILABLE or torch.cuda.mem_get_info()[0] < 17_179_869_184  # 16GB
 
-SEQ2SEQ_MODELS = {Models.CodeT5plus_220M}
-CAUSAL_MODELS = {Models.DistilGPT2, Models.GPT2, Models.CodeGen2_1B}
-BIG_SEQ2SEQ_MODELS = {Models.CodeT5plus_6B, Models.InstructCodeT5plus_16B}
-BIG_CAUSAL_MODELS = {Models.CodeGen2_3_7B}
+SEQ2SEQ_MODELS = {HuggingFaceModelNames.CodeT5plus_220M}
+CAUSAL_MODELS = {HuggingFaceModelNames.DistilGPT2, HuggingFaceModelNames.GPT2, HuggingFaceModelNames.CodeGen2_1B}
+BIG_SEQ2SEQ_MODELS = {HuggingFaceModelNames.CodeT5plus_6B, HuggingFaceModelNames.InstructCodeT5plus_16B}
+BIG_CAUSAL_MODELS = {HuggingFaceModelNames.CodeGen2_3_7B}
 BIG_MODELS = BIG_SEQ2SEQ_MODELS | BIG_CAUSAL_MODELS
 ALL_MODELS = SEQ2SEQ_MODELS | CAUSAL_MODELS | BIG_MODELS
 
 
 @pytest.mark.slow()
-@pytest.mark.parametrize("model", [Models.CodeLLama_7B])
+@pytest.mark.parametrize("model", [HuggingFaceModelNames.CodeLLama_7B])
 def test_code_llama_autoregressive(model):
     """7B and 13B *base* models can be used for text/code completion"""
     lm = get_huggingface_lm(
@@ -60,7 +49,7 @@ def test_code_llama_autoregressive(model):
 
 
 @pytest.mark.slow()
-@pytest.mark.parametrize("model", [Models.CodeLLama_7B, Models.CodeLLama_7B_Instruct])
+@pytest.mark.parametrize("model", [HuggingFaceModelNames.CodeLLama_7B, HuggingFaceModelNames.CodeLLama_7B_Instruct])
 def test_code_llama_infill(model):
     """7B and 13B base *and* instruct variants support infilling based on surrounding content"""
     lm = get_huggingface_lm(
@@ -90,7 +79,7 @@ def test_code_llama_infill(model):
 
 
 @pytest.mark.slow()
-@pytest.mark.parametrize("model", [Models.CodeLLama_7B_Instruct])
+@pytest.mark.parametrize("model", [HuggingFaceModelNames.CodeLLama_7B_Instruct])
 def test_code_llama_conversation(model):
     """Instruction fine-tuned models can be used in conversational interfaces"""
     lm = get_huggingface_lm(
@@ -145,7 +134,7 @@ def test_code_llama_conversation(model):
 @pytest.mark.slow()
 def test_trim_start():
     lm = get_huggingface_lm(
-        Models.CodeGen2_1B,
+        HuggingFaceModelNames.CodeGen2_1B,
         runtime=Runtime.PYTORCH,
         trust_remote_code=True,
     )
@@ -167,7 +156,7 @@ def test_trim_start():
 @pytest.mark.slow()
 def test_logprobs_codegen2():
     lm = get_huggingface_lm(
-        Models.CodeGen2_1B,
+        HuggingFaceModelNames.CodeGen2_1B,
         allow_patch_model_forward=False,
         runtime=Runtime.PYTORCH,
         trust_remote_code=True,
@@ -182,7 +171,7 @@ def test_logprobs_codegen2():
     logprobs_a = np.array(outa.completion_logprobs)
 
     lm = get_huggingface_lm(
-        Models.CodeGen2_1B,
+        HuggingFaceModelNames.CodeGen2_1B,
         allow_patch_model_forward=True,
         runtime=Runtime.PYTORCH,
         trust_remote_code=True,
@@ -202,7 +191,7 @@ def test_logprobs_codegen2():
 
 @pytest.mark.slow()
 def test_stop_n_codet5():
-    lm = get_huggingface_lm(Models.CodeT5plus_220M, runtime=Runtime.PYTORCH)
+    lm = get_huggingface_lm(HuggingFaceModelNames.CodeT5plus_220M, runtime=Runtime.PYTORCH)
     no_logprobs_prompt = LmPrompt(
         text="def hello_world():",
         max_tokens=50,
@@ -289,7 +278,7 @@ def test_stop_n_codet5():
 @pytest.mark.slow()
 def test_stop_n_codegen2():
     lm = get_huggingface_lm(
-        Models.CodeGen2_1B,
+        HuggingFaceModelNames.CodeGen2_1B,
         runtime=Runtime.PYTORCH,
         trust_remote_code=True,
     )
@@ -339,7 +328,7 @@ def test_stop_n_codegen2():
 @pytest.mark.slow()
 def test_logprobs_equal_stop_codegen2():
     lm = get_huggingface_lm(
-        Models.CodeGen2_1B,
+        HuggingFaceModelNames.CodeGen2_1B,
         runtime=Runtime.PYTORCH,
         trust_remote_code=True,
     )
@@ -384,7 +373,7 @@ def test_logprobs_equal_stop_codegen2():
 @pytest.mark.slow()
 def test_logprobs_echo_stop_codegen2():
     lm = get_huggingface_lm(
-        Models.CodeGen2_1B,
+        HuggingFaceModelNames.CodeGen2_1B,
         runtime=Runtime.PYTORCH,
         trust_remote_code=True,
     )
@@ -419,7 +408,7 @@ def test_stop_token_removal():
 3. France
 4. Mexico"""
     # Load model
-    lm = get_huggingface_lm(Models.DistilGPT2, runtime=Runtime.PYTORCH)
+    lm = get_huggingface_lm(HuggingFaceModelNames.DistilGPT2, runtime=Runtime.PYTORCH)
 
     # Let's make sure we get a stop token in our prompt normally
     prompt = LmPrompt(
@@ -608,7 +597,7 @@ def test_stop_token_removal():
 
 
 def test_degenerate_offsets():
-    lm = get_huggingface_lm(Models.DistilGPT2)
+    lm = get_huggingface_lm(HuggingFaceModelNames.DistilGPT2)
     token_ids = [13, 198, 198]
     text = ".\n\n"
     offsets = _get_token_offsets(lm._tokenizer, token_ids)
@@ -617,7 +606,7 @@ def test_degenerate_offsets():
 
 def test_stop_tokens():
     # Load model
-    lm = get_huggingface_lm(Models.DistilGPT2, runtime=Runtime.PYTORCH)
+    lm = get_huggingface_lm(HuggingFaceModelNames.DistilGPT2, runtime=Runtime.PYTORCH)
 
     # Let's make sure we get a stop token in our prompt normally
     prompt = LmPrompt(
@@ -683,7 +672,7 @@ def test_distilgpt2_pytorch_runtime():
         cache=False,
         temperature=0,
     )
-    lm = get_huggingface_lm(Models.DistilGPT2, runtime=Runtime.PYTORCH)
+    lm = get_huggingface_lm(HuggingFaceModelNames.DistilGPT2, runtime=Runtime.PYTORCH)
     out = lm.predict(prompt)
     assert out.completion_text
 
@@ -725,7 +714,7 @@ def test_get_ort(runtime: Runtime, lm: str):
 
 @pytest.mark.slow()
 @pytest.mark.skip(reason="Better Transformer is not ready yet")
-@pytest.mark.parametrize("lm", [Models.DistilGPT2, Models.GPT2])
+@pytest.mark.parametrize("lm", [HuggingFaceModelNames.DistilGPT2, HuggingFaceModelNames.GPT2])
 def test_get_better_transformer(lm):
     prompt = LmPrompt(
         "print('Hello world",
@@ -741,7 +730,7 @@ def test_get_better_transformer(lm):
 @pytest.mark.slow()
 @pytest.mark.skip(reason="Better Transformer is not ready yet")
 def test_codegen2_predict_bt():
-    lm = Models.CodeGen2_1B
+    lm = HuggingFaceModelNames.CodeGen2_1B
     with pytest.raises(Exception) as e_info:
         get_huggingface_lm(lm, runtime=Runtime.BETTER_TRANSFORMER)
         assert str(e_info.value).startswith("WARNING BetterTransformer")
@@ -780,7 +769,7 @@ def test_code_llama_stop():
     )
 
     lm = get_huggingface_lm(
-        Models.CodeLLama_7B,
+        HuggingFaceModelNames.CodeLLama_7B,
         trust_remote_code=True,
         precision=torch.float16,
     )
@@ -790,7 +779,7 @@ def test_code_llama_stop():
 
 
 def test_tokenizer_offsets_code_llama():
-    model_name = Models.CodeLLama_7B
+    model_name = HuggingFaceModelNames.CodeLLama_7B
     # Get the huggingface tokenizer
     from transformers import AutoTokenizer
 
@@ -828,7 +817,7 @@ def test_offsets_for_removal_prompt():
 3. France
 4. Mexico"""
     # get the tokenizer model
-    lm = get_huggingface_lm(Models.DistilGPT2, runtime=Runtime.PYTORCH)
+    lm = get_huggingface_lm(HuggingFaceModelNames.DistilGPT2, runtime=Runtime.PYTORCH)
     tokenizer = lm._tokenizer
     seq = [4486, 198, 21, 13, 8031]
     print("dec\n" + tokenizer.decode(seq))
