@@ -100,7 +100,7 @@ class HuggingFaceModelNames(metaclass=_ModelNamesMeta):
         "Salesforce/codet5p-6b",
         token_limit=2_048,
     )
-    CodeT5plus_6B = HuggingFaceModelInfo(
+    CodeT5plus_16B = HuggingFaceModelInfo(
         "Salesforce/codet5p-16b",
         token_limit=2_048,
     )
