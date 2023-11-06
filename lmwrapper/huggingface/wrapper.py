@@ -239,15 +239,6 @@ def get_huggingface_lm(
         else:
             device = torch.device(device)
 
-    if runtime != Runtime.PYTORCH:
-        msg = (
-            "Accelerated inference model support is still under"
-            " development. Please use Runtime.PYTORCH until support matures."
-        )
-        raise NotImplementedError(
-            msg,
-        )
-
     _kwargs = {"trust_remote_code": trust_remote_code}
 
     model_config: PretrainedConfig = AutoConfig.from_pretrained(
