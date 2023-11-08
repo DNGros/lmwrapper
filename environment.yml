@@ -36,3 +36,6 @@ dependencies:
     - bitsandbytes~=0.41.1
     - xformers
     - flash_attn
+
+# To setup latest (from main) HF libraries, run:
+# python -m pip install --upgrade --upgrade-strategy=eager --no-deps "peft @ git+https://github.com/huggingface/peft" "datasets @ git+https://github.com/huggingface/datasets" "evaluate @ git+https://github.com/huggingface/evaluate" "accelerate @ git+https://github.com/huggingface/accelerate" "optimum @ git+https://github.com/huggingface/optimum" "trl @ git+https://github.com/huggingface/trl" "transformers @ git+https://github.com/huggingface/transformers" "huggingface_hub @ git+https://github.com/huggingface/huggingface_hub" "exporters @ git+https://github.com/huggingface/exporters" "-e git+https://github.com/huggingface/tokenizers#egg=tokenizers&subdirectory=bindings/python" "setfit @ git+https://github.com/huggingface/setfit.git"

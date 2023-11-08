@@ -6,7 +6,7 @@ from lmwrapper.huggingface_wrapper import get_huggingface_lm
 from lmwrapper.runtime import Runtime
 from lmwrapper.structs import LmPrompt
 
-ALL_MODELS = {
+ALL_MODELS = [
     HuggingFaceModelNames.CodeGen25_7B_Instruct,
     HuggingFaceModelNames.CodeGen25_7B_Multi,
     HuggingFaceModelNames.CodeGen25_7B_Python,
@@ -42,7 +42,7 @@ ALL_MODELS = {
     HuggingFaceModelNames.LLama_2_13B_Chat,
     HuggingFaceModelNames.LLama_2_70B,
     HuggingFaceModelNames.LLama_2_70B_Chat,
-}
+]
 
 
 @pytest.mark.slow()
