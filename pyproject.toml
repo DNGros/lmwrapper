@@ -44,6 +44,7 @@ flash-attn = [ "flash_attn~=2.3.2"]
 ort = ["optimum[onnxruntime]~=1.13.2"]
 # This will also install accelerate:
 ort-gpu = ["optimum[onnxruntime-gpu]~=1.13.2"]
+vllm = ["vllm~=0.2.1", "ray~=2.8.0"]
 
 [project.urls]
 "Homepage" = "https://github.com/DNGros/lmwrapper"

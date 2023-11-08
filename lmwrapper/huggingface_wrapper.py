@@ -3,10 +3,12 @@ from importlib.metadata import version as import_version
 from pathlib import Path
 from typing import Literal
 
+import openai
 from packaging import version
 
 from lmwrapper.env import _MPS_ENABLED, _ONNX_RUNTIME, _QUANTIZATION_ENABLED
 from lmwrapper.HuggingfacePredictor import HuggingfacePredictor
+from lmwrapper.openai_wrapper import get_open_ai_lm
 from lmwrapper.prompt_trimming import PromptTrimmer
 from lmwrapper.runtime import Runtime
 from lmwrapper.structs import LmPrompt
@@ -172,6 +174,7 @@ def _get_accelerator() -> torch.device:
 
     return torch.device("cpu")
 
+vllm_process = None
 
 def get_huggingface_lm(
     model: str,
@@ -668,6 +671,17 @@ def _initialize_hf_model(
                 **_kwargs,
             ),
         )
+    elif runtime == Runtime.VLLM:
+        openai.api_key = "EMPTY"
+        openai.api_base = "http://localhost:8000/v1"
+        from subprocess import Popen
+
+        vllm_process = Popen(
+            f"python -m vllm.entrypoints.openai.api_server --model {model_name}",
+            shell=True,
+        )
+        return get_open_ai_lm(model_name)
+        # vllm.entrypoints.api_server
     else:
         msg = "Invalid Runtime provided."
         raise ValueError(msg)
@@ -736,3 +750,7 @@ def _warmup_model(predictor: HuggingfacePredictor):
         raise ValueError("Prompt too long.")
     long_prompt = LmPrompt(long_prompt_str, cache=False, temperature=0, max_tokens=1)
     predictor.predict(long_prompt)
+
+def kill_vllm():
+    if vllm_process:
+        vllm_process.terminate()
