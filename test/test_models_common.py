@@ -3,8 +3,8 @@ import math
 import numpy as np
 import pytest
 
-from lmwrapper.huggingface_wrapper import get_huggingface_lm
-from lmwrapper.openai_wrapper import get_open_ai_lm, OpenAiModelNames
+from lmwrapper.huggingface.huggingface_wrapper import get_huggingface_lm
+from lmwrapper.openai.openai_wrapper import get_open_ai_lm, OpenAiModelNames
 from lmwrapper.structs import LmPrompt
 
 ALL_MODELS = [

@@ -7,8 +7,8 @@ import openai
 from packaging import version
 
 from lmwrapper.env import _MPS_ENABLED, _ONNX_RUNTIME, _QUANTIZATION_ENABLED
-from lmwrapper.HuggingfacePredictor import HuggingfacePredictor
-from lmwrapper.openai_wrapper import get_open_ai_lm
+from lmwrapper.huggingface.HuggingfacePredictor import HuggingfacePredictor
+from lmwrapper.openai.openai_wrapper import get_open_ai_lm
 from lmwrapper.prompt_trimming import PromptTrimmer
 from lmwrapper.runtime import Runtime
 from lmwrapper.structs import LmPrompt

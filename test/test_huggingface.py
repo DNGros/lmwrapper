@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 import torch
 
-from lmwrapper.huggingface_wrapper import get_huggingface_lm
-from lmwrapper.HuggingfacePredictor import _get_token_offsets, \
+from lmwrapper.huggingface.huggingface_wrapper import get_huggingface_lm
+from lmwrapper.huggingface.HuggingfacePredictor import _get_token_offsets, \
     _expand_offsets_to_a_token_index_for_every_text_index
 from lmwrapper.prompt_trimming import HfTokenTrimmer
 from lmwrapper.runtime import Runtime

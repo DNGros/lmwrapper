@@ -7,9 +7,9 @@ import torch
 from transformers import GenerationConfig, PreTrainedModel, PreTrainedTokenizerFast
 from transformers.utils.generic import TensorType
 
-from lmwrapper._TokenStoppingCriteria import _TokenStoppingCriteria
+from lmwrapper.huggingface._TokenStoppingCriteria import _TokenStoppingCriteria
 from lmwrapper.abstract_predictor import LmPredictor
-from lmwrapper.HuggingfacePrediction import HuggingfacePrediction
+from lmwrapper.huggingface.HuggingfacePrediction import HuggingfacePrediction
 from lmwrapper.prompt_trimming import PromptTrimmer
 from lmwrapper.runtime import Runtime
 from lmwrapper.structs import LmPrediction, LmPrompt
