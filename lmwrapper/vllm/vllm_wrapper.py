@@ -51,9 +51,6 @@ class vLLMPrediction(LmPrediction):
 
     def __post_init__(self):
         assert self._num_prompt_tokens
-        if self.prompt.add_bos_token:
-            self._num_prompt_tokens -= 1
-
         if self.prompt.logprobs == 0:
             return
 
