@@ -7,8 +7,8 @@ import openai
 from packaging import version
 
 from lmwrapper.env import _MPS_ENABLED, _ONNX_RUNTIME, _QUANTIZATION_ENABLED
-from lmwrapper.huggingface.HuggingfacePredictor import HuggingfacePredictor
-from lmwrapper.openai.openai_wrapper import get_open_ai_lm
+from lmwrapper.huggingface.predictor import HuggingFacePredictor
+from lmwrapper.openai.wrapper import get_open_ai_lm
 from lmwrapper.prompt_trimming import PromptTrimmer
 from lmwrapper.runtime import Runtime
 from lmwrapper.structs import LmPrompt
@@ -87,9 +87,9 @@ except ImportError:
 # available for a limited number of models, notably LLaMa/CodeLLaMa!
 _FLASH_ATTENTION_AVAILABLE = False
 try:
-    from transformers.utils.import_utils import is_flash_attn_available
+    from transformers.utils.import_utils import is_flash_attn_2_available
 
-    _FLASH_ATTENTION_AVAILABLE = is_flash_attn_available()
+    _FLASH_ATTENTION_AVAILABLE = is_flash_attn_2_available()
 except ImportError:
     pass
 
@@ -174,8 +174,6 @@ def _get_accelerator() -> torch.device:
 
     return torch.device("cpu")
 
-vllm_process = None
-
 def get_huggingface_lm(
     model: str,
     runtime: Runtime = Runtime.PYTORCH,
@@ -184,7 +182,7 @@ def get_huggingface_lm(
     allow_patch_model_forward: bool = True,
     prompt_trimmer: PromptTrimmer = None,
     device: torch.device | str = None,
-) -> HuggingfacePredictor:
+) -> HuggingFacePredictor:
     """
     Initialize and return a Hugging Face language model for prediction.
 
@@ -241,14 +239,14 @@ def get_huggingface_lm(
         else:
             device = torch.device(device)
 
-    if runtime != Runtime.PYTORCH:
-        msg = (
-            "Accelerated inference model support is still under"
-            " development. Please use Runtime.PYTORCH until support matures."
-        )
-        raise NotImplementedError(
-            msg,
-        )
+    # if runtime != Runtime.PYTORCH:
+    #     msg = (
+    #         "Accelerated inference model support is still under"
+    #         " development. Please use Runtime.PYTORCH until support matures."
+    #     )
+    #     raise NotImplementedError(
+    #         msg,
+    #     )
 
     _kwargs = {"trust_remote_code": trust_remote_code}
 
@@ -432,9 +430,9 @@ def get_huggingface_predictor(
     runtime: Runtime = Runtime.PYTORCH,
     allow_patch_model_forward: bool = False,
     prompt_trimmer: PromptTrimmer | None = None,
-) -> HuggingfacePredictor:
+) -> HuggingFacePredictor:
     """
-    Creates and returns a HuggingfacePredictor object configured with the specified parameters.
+    Creates and returns a HuggingFacePredictor object configured with the specified parameters.
 
     Parameters
     ----------
@@ -465,10 +463,10 @@ def get_huggingface_predictor(
     --------
     >>> predictor = get_huggingface_predictor(tokenizer, model, device=torch.device('cuda'))
     >>> type(predictor)
-    <class 'HuggingfacePredictor'>
+    <class 'HuggingFacePredictor'>
 
     """
-    return HuggingfacePredictor(
+    return HuggingFacePredictor(
         tokenizer,
         model,
         device=device,
@@ -488,7 +486,7 @@ def _initialize_hf_model(
     prompt_trimmer: PromptTrimmer = None,
     device: torch.device = None,
     _kwargs: dict = {},
-) -> HuggingfacePredictor:
+) -> HuggingFacePredictor:
     """
     Initialize a Hugging Face model for prediction based on various configurations.
 
@@ -535,7 +533,6 @@ def _initialize_hf_model(
     -----
     * `_kwargs` can be modified within the function.
     * Function logs CUDA memory before and after model instantiation for PyTorch runtime.
-    * Function may warm up models for TensorRT runtime.
 
     Examples
     --------
@@ -634,34 +631,6 @@ def _initialize_hf_model(
             save_dir,
             provider="CUDAExecutionProvider",
         )
-    elif runtime == Runtime.ORT_TENSORRT:
-        if torch_device.type != "cuda":
-            msg = "Cannot run model on CUDA without CUDA. Please specify device='cuda'."
-            raise ValueError(
-                msg,
-            )
-
-        provider_options = {
-            "trt_engine_cache_enable": True,
-            "trt_engine_cache_path": (
-                f"tmp/trt_cache_{model_name.replace('/','_')}_tensorrt"
-            ),
-        }
-
-        # TensorRT models do not support these flags
-        _kwargs.pop("low_cpu_mem_usage", None)
-        _kwargs.pop("device_map", None)
-
-        model = get_ort_model(model_class).from_pretrained(
-            pretrained_model_name_or_path=model_name,
-            config=model_config,
-            export=True,
-            provider="TensorrtExecutionProvider",
-            provider_options=provider_options,
-            session_options=session_options,
-            **_kwargs,
-        )
-        assert "TensorrtExecutionProvider" in model.providers
     elif runtime == Runtime.BETTER_TRANSFORMER:
         model = BetterTransformer.transform(
             model_class.from_pretrained(
@@ -671,17 +640,6 @@ def _initialize_hf_model(
                 **_kwargs,
             ),
         )
-    elif runtime == Runtime.VLLM:
-        openai.api_key = "EMPTY"
-        openai.api_base = "http://localhost:8000/v1"
-        from subprocess import Popen
-
-        vllm_process = Popen(
-            f"python -m vllm.entrypoints.openai.api_server --model {model_name}",
-            shell=True,
-        )
-        return get_open_ai_lm(model_name)
-        # vllm.entrypoints.api_server
     else:
         msg = "Invalid Runtime provided."
         raise ValueError(msg)
@@ -703,54 +661,4 @@ def _initialize_hf_model(
         prompt_trimmer=prompt_trimmer,
     )
 
-    if runtime == Runtime.ORT_TENSORRT:
-        # Warm up TensorRT model once instantiated.
-        logging.info("Warmimg up TensorRT model.")
-        _warmup_model(predictor)
-        logging.info("Warmup successful.")
-
     return predictor
-
-
-def _warmup_model(predictor: HuggingfacePredictor):
-    """
-    Warms up a given Huggingface predictor model by running predictions.
-    The purpose of this is primarily to build TensorRT kernels for various
-    input sizes, as otherwise they would be built on the fly, causing
-    significant delay.
-
-    Parameters
-    ----------
-    predictor : HuggingfacePredictor
-        Instance of a Huggingface predictor class.
-
-    Notes
-    -----
-    * Performs a small prediction using a single '!' as prompt.
-    * Verifies if token limit is respected by attempting a long token string.
-    * Both predictions are done with cache disabled, temperature at 0 and max_tokens set to 1.
-
-    Raises
-    ------
-    ValueError:
-        If token limit is not respected.
-
-    Examples
-    --------
-    >>> predictor = _initialize_hf_model('gpt-2', AutoModelForCausalLM, config)
-    >>> _warmup_model(predictor)
-    """
-    raise NotImplementedError("Model warmup is not support yet.")
-    small_prompt = LmPrompt("!", cache=False, temperature=0, max_tokens=1)
-    predictor.predict(small_prompt)
-
-    single_token = predictor.tokenize("Hello")[0]
-    long_prompt_str = single_token * (predictor.token_limit - 1)
-    if predictor.tokenize(long_prompt_str) != (predictor.token_limit - 1):
-        raise ValueError("Prompt too long.")
-    long_prompt = LmPrompt(long_prompt_str, cache=False, temperature=0, max_tokens=1)
-    predictor.predict(long_prompt)
-
-def kill_vllm():
-    if vllm_process:
-        vllm_process.terminate()

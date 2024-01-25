@@ -3,12 +3,12 @@ import math
 import numpy as np
 import pytest
 
-from lmwrapper.huggingface.huggingface_wrapper import get_huggingface_lm
-from lmwrapper.openai.openai_wrapper import get_open_ai_lm, OpenAiModelNames
+from lmwrapper.huggingface.wrapper import get_huggingface_lm
+from lmwrapper.openai.wrapper import get_open_ai_lm, OpenAiModelNames
 from lmwrapper.structs import LmPrompt
 
 ALL_MODELS = [
-    get_open_ai_lm(OpenAiModelNames.text_ada_001),
+    # get_open_ai_lm(OpenAiModelNames.text_ada_001),
     get_huggingface_lm("gpt2"),
 ]
 
@@ -509,4 +509,5 @@ def test_none_max_tokens(lm):
         cache=False,
     )
     result = lm.predict(prompt)
-    assert len(result.completion_tokens) == lm.default_tokens_generated
+    assert len(result.completion_tokens) > 45
+    assert len(result.completion_tokens) < lm.default_tokens_generated

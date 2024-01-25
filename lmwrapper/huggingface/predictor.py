@@ -1,25 +1,27 @@
 import inspect
 import logging
+from collections.abc import Sequence
 from functools import cached_property
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING
 
 import torch
 from transformers import GenerationConfig, PreTrainedModel, PreTrainedTokenizerFast
 from transformers.utils.generic import TensorType
 
-from lmwrapper.huggingface._TokenStoppingCriteria import _TokenStoppingCriteria
 from lmwrapper.abstract_predictor import LmPredictor
-from lmwrapper.huggingface.HuggingfacePrediction import HuggingfacePrediction
 from lmwrapper.prompt_trimming import PromptTrimmer
 from lmwrapper.runtime import Runtime
-from lmwrapper.structs import LmPrediction, LmPrompt
+from lmwrapper.structs import LmChatDialog, LmPrediction, LmPrompt
 from lmwrapper.utils import log_cuda_mem
+
+from .prediction import HuggingFacePrediction
+from .token_stopping_criteria import TokenStoppingCriteria
 
 if TYPE_CHECKING:
     from transformers.generation.utils import GenerateOutput
 
 
-class HuggingfacePredictor(LmPredictor):
+class HuggingFacePredictor(LmPredictor):
     def __init__(
         self,
         tokenizer: PreTrainedTokenizerFast,
@@ -108,12 +110,23 @@ class HuggingfacePredictor(LmPredictor):
         if self.prompt_trimmer:
             prompt_text = self.prompt_trimmer.trim_text(prompt_text)
 
-        encoded_input = self._tokenizer(
-            prompt_text,
-            return_tensors="pt",
-            return_attention_mask=model_requires_attention_mask,
-            add_special_tokens=prompt.add_special_tokens,
-        )
+        if prompt.is_dialog():
+            encoded_input = self._tokenizer.apply_chat_template(
+                prompt.text.as_dicts()
+                if isinstance(prompt.text, LmChatDialog)
+                else prompt.text,
+                add_generation_prompt=True,
+                return_tensors="pt",
+                return_attention_mask=model_requires_attention_mask,
+                add_special_tokens=prompt.add_special_tokens,  # TODO: does this make sense for dialog?
+            )
+        else:
+            encoded_input = self._tokenizer(
+                prompt_text,
+                return_tensors="pt",
+                return_attention_mask=model_requires_attention_mask,
+                add_special_tokens=prompt.add_special_tokens,
+            )
 
         if len(encoded_input.input_ids) > self.token_limit:
             if self.prompt_trimmer:
@@ -254,7 +267,7 @@ class HuggingfacePredictor(LmPredictor):
         )
         if prompt.stop:
             stopping_criteria = [
-                _TokenStoppingCriteria(
+                TokenStoppingCriteria(
                     prompt.stop,
                     decode=True,
                     tokenizer=self._tokenizer,
@@ -287,7 +300,10 @@ class HuggingfacePredictor(LmPredictor):
         stop_token_idx_generated = None
 
         generated_text = self._tokenizer.decode(
-            generated_sequence, skip_special_tokens=False, clean_up_tokenization_spaces=False)
+            generated_sequence,
+            skip_special_tokens=False,
+            clean_up_tokenization_spaces=False,
+        )
         clean_generated_text = self._tokenizer.decode(
             generated_sequence,
             skip_special_tokens=True,
@@ -297,7 +313,7 @@ class HuggingfacePredictor(LmPredictor):
         if prompt.stop:
             token_offsets = _get_token_offsets(self._tokenizer, generated_sequence)
             token_offsets_full = _expand_offsets_to_a_token_index_for_every_text_index(
-                token_offsets
+                token_offsets,
             )
             if len(token_offsets_full) != len(generated_text):
                 raise RuntimeError(
@@ -305,7 +321,7 @@ class HuggingfacePredictor(LmPredictor):
                     f"Generated text: '{generated_text}'\n"
                     f"Token offsets: {token_offsets}\n"
                     f"Tokens: {self._tokenizer.convert_ids_to_tokens(generated_sequence)}\n"
-                    f"Token offsets full: {token_offsets_full}"
+                    f"Token offsets full: {token_offsets_full}",
                 )
             sorted_stop_sequences = sorted(prompt.stop, key=len, reverse=True)
 
@@ -456,7 +472,7 @@ class HuggingfacePredictor(LmPredictor):
         logging.debug("Post del statements")
         log_cuda_mem()
 
-        return HuggingfacePrediction(
+        return HuggingFacePrediction(
             completion_text=clean_generated_text,
             prompt=prompt,
             metad=updated_output,
@@ -513,7 +529,7 @@ class HuggingfacePredictor(LmPredictor):
         return limit
 
     def estimate_tokens_in_prompt(self, prompt: LmPrompt) -> int:
-        if prompt.is_text_a_chat():
+        if prompt.is_dialog():
             raise NotImplementedError
         return len(self.tokenize(prompt.text))
 
@@ -562,7 +578,11 @@ def _get_token_offsets(
         )
 
     new_tokenize = tokenizer(
-        tokenizer.decode(token_ids, clean_up_tokenization_spaces=False, skip_special_tokens=False),
+        tokenizer.decode(
+            token_ids,
+            clean_up_tokenization_spaces=False,
+            skip_special_tokens=False,
+        ),
         return_offsets_mapping=True,
         add_special_tokens=False,
     )
@@ -587,7 +607,7 @@ def _get_token_offsets(
             new_token_ids = token_ids
             assert len(new_token_ids) == len(offset_mapping)
 
-    #starts, ends = list(zip(*offset_mapping))
+    # starts, ends = list(zip(*offset_mapping))
 
     if new_token_ids != token_ids:
         msg = f"Token IDs do not match\nOriginal: {token_ids}\nNew: {new_token_ids}"
@@ -603,7 +623,8 @@ def _attempt_to_fix_degenerate_merges(
     output_token_strs: Sequence[str],
     new_tokenization_strs: Sequence[str],
 ) -> Sequence[tuple[int, int]]:
-    """Sometimes a model might output what I'm calling 'degenerate merges'.
+    """
+    Sometimes a model might output what I'm calling 'degenerate merges'.
     Here subtokens are outputted when a different token exists that is a merged
     version of the subtokens. This is a problem because the way we get
     the tokenize offsets relies on detokenizing the output tokens and then
@@ -620,7 +641,7 @@ def _attempt_to_fix_degenerate_merges(
     if len(output_tokens) < len(new_tokenization):
         raise ValueError(
             "Cannot fix solutions when there are more new tokens than output tokens. "
-            "Expect cases where output has more because of extra unmerged tokens."
+            "Expect cases where output has more because of extra unmerged tokens.",
         )
     output_idx = 0
     new_idx = 0
@@ -648,7 +669,12 @@ def _attempt_to_fix_degenerate_merges(
                 start_offset, _ = new_tokenization_offsets[new_idx]
                 for split_idx in output_tokens_idxes_for_this_new_token:
                     output_token_str_for_this_split = output_token_strs[split_idx]
-                    output_offsets.append((start_offset, start_offset + len(output_token_str_for_this_split)))
+                    output_offsets.append(
+                        (
+                            start_offset,
+                            start_offset + len(output_token_str_for_this_split),
+                        ),
+                    )
                     start_offset += len(output_token_str_for_this_split)
             else:
                 msg = (
@@ -658,9 +684,7 @@ def _attempt_to_fix_degenerate_merges(
                     f"Original tokens: {output_token_strs}\n"
                     f"New tokens: {new_tokenization_strs}\n"
                 )
-                raise ValueError(
-                    msg
-                )
+                raise ValueError(msg)
     return output_offsets
 
 

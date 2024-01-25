@@ -46,12 +46,11 @@ Please note that this method is for development and not supported.
 ### Completion models
 
 ```python
-from lmwrapper.openai_wrapper import get_open_ai_lm, OpenAiModelNames
+from lmwrapper.openai import get_open_ai_lm, OpenAiModelNames
 from lmwrapper.structs import LmPrompt
 
 lm = get_open_ai_lm(
-    model_name=OpenAiModelNames.text_ada_001,  # Or use OpenAiModelNames.gpt_3_5_turbo_instruct
-                                               # for the most capable completion model.
+    model_name=OpenAiModelNames.gpt_3_5_turbo_instruct,
     api_key_secret=None, # By default this will read from the OPENAI_API_KEY environment variable.
                          # If that isn't set, it will try the file ~/oai_key.txt
                          # You need to place the key in one of these places,
@@ -72,7 +71,7 @@ print(prediction.completion_text)
 ### Chat models
 
 ```python
-from lmwrapper.openai_wrapper import get_open_ai_lm, OpenAiModelNames
+from lmwrapper.openai import get_open_ai_lm, OpenAiModelNames
 from lmwrapper.structs import LmPrompt, LmChatTurn
 lm = get_open_ai_lm(OpenAiModelNames.gpt_3_5_turbo)
 
@@ -115,7 +114,7 @@ Causal LM models on Hugging Face models can be used interchangeably with the
 OpenAI models.
 
 ```python
-from lmwrapper.huggingface_wrapper import get_huggingface_lm
+from lmwrapper.huggingface import get_huggingface_lm
 from lmwrapper.structs import LmPrompt
 lm = get_huggingface_lm("gpt2")  # The smallest 124M parameter model
 
@@ -145,7 +144,7 @@ An OpenAIPredictor can be configured to read rate limit errors and wait the appr
 amount of seconds in the error before retrying.
 
 ```python
-from lmwrapper.openai_wrapper import *
+from lmwrapper.openai import get_open_ai_lm, OpenAiModelNames
 lm = get_open_ai_lm(OpenAiModelNames.text_ada_001, retry_on_rate_limit=True)
 ```
 
@@ -154,7 +153,9 @@ lm = get_open_ai_lm(OpenAiModelNames.text_ada_001, retry_on_rate_limit=True)
 ### Built-in token counting
 
 ```python
-from lmwrapper.openai_wrapper import *
+from lmwrapper.openai import get_open_ai_lm, OpenAiModelNames
+from lmwrapper.structs import LmPrompt
+
 lm = get_open_ai_lm(OpenAiModelNames.text_ada_001)
 assert lm.estimate_tokens_in_prompt(
     LmPrompt("My name is Spingldorph", max_tokens=10)) == 7

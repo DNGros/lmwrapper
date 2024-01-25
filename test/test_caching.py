@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 
 from lmwrapper.caching import set_cache_dir
-from lmwrapper.huggingface.huggingface_wrapper import get_huggingface_lm
+from lmwrapper.huggingface.wrapper import get_huggingface_lm
 from lmwrapper.structs import LmPrompt
 
 

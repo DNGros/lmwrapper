@@ -131,7 +131,7 @@ class LmPrompt:
                 msg,
             )
 
-    def is_text_a_chat(self) -> bool:
+    def is_dialog(self) -> bool:
         return isinstance(self.text, list)
 
     def get_text_as_chat(self) -> "LmChatDialog":
@@ -142,7 +142,7 @@ class LmPrompt:
         Will always return a string, even if it was originally a chat. It will use
         the default form of the chat specified in LmChatDialog.to_default_string_prompt()
         """
-        if self.is_text_a_chat():
+        if self.is_dialog():
             return self.text.to_default_string_prompt()
         else:
             return self.text

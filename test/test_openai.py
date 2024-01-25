@@ -4,7 +4,7 @@ import warnings
 import pytest
 
 from lmwrapper.caching import clear_cache_dir
-from lmwrapper.openai.openai_wrapper import (
+from lmwrapper.openai.wrapper import (
     OpenAiInstantiationHook,
     OpenAiModelNames,
     OpenAIPredictor,

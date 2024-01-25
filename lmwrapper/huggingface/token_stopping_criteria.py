@@ -2,7 +2,7 @@ import torch
 from transformers import PreTrainedTokenizerFast, StoppingCriteria
 
 
-class _TokenStoppingCriteria(StoppingCriteria):
+class TokenStoppingCriteria(StoppingCriteria):
     def __init__(
         self,
         stop_sequences: list[list[str]] = [],

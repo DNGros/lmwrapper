@@ -5,22 +5,19 @@ from typing import Any, Literal
 
 import numpy as np
 
-# from vllm.entrypoints.llm import LLM
-from vllm import LLM, SamplingParams
-
 from lmwrapper.abstract_predictor import LmPredictor
-from lmwrapper.huggingface.HuggingfacePredictor import HuggingfacePredictor
+from lmwrapper.huggingface.predictor import HuggingFacePredictor
 from lmwrapper.prompt_trimming import PromptTrimmer
 from lmwrapper.runtime import Runtime
-from lmwrapper.structs import LmPrediction, LmPrompt
+from lmwrapper.structs import LmChatDialog, LmPrediction, LmPrompt
 from lmwrapper.utils import log_cuda_mem
 
 try:
-    import vllm
+    from vllm import LLM, SamplingParams
 
     # assert version.parse(torch.__version__) >= version.parse("2.0")
 except ImportError:
-    msg = "vllm not imported."
+    msg = "Error importing vLLM. Please verify your installation."
     raise ImportError(
         msg,
     )
@@ -32,7 +29,7 @@ def get_vllm_lm(
     precision: Literal["float32", "float16", "half", "bfloat16", "auto"] = "auto",
     trust_remote_code: bool = False,
     prompt_trimmer: PromptTrimmer = None,
-) -> HuggingfacePredictor:
+) -> HuggingFacePredictor:
     llm = LLM(
         model=model,
         trust_remote_code=trust_remote_code,
@@ -130,7 +127,23 @@ class vLLMPredictor(LmPredictor):
             prompt_logprobs=prompt.logprobs if prompt.echo else None,
             skip_special_tokens=not prompt.add_special_tokens,
         )
-        completions = self._llm.generate(
+
+        if prompt.is_dialog():
+            prompt_token_ids = self._tokenizer.apply_chat_template(
+                prompt.text.as_dicts()
+                if isinstance(prompt.text, LmChatDialog)
+                else prompt.text,
+                add_generation_prompt=True,
+                return_tensors="pt",
+                add_special_tokens=prompt.add_special_tokens,  # TODO: does this make sense for dialog?
+            )
+            completions = self._llm.generate(
+            prompt_token_ids=prompt_token_ids,
+            sampling_params=sampling_params,
+            use_tqdm=False,
+        )
+        else:
+            completions = self._llm.generate(
             prompts=prompt.text,
             sampling_params=sampling_params,
             use_tqdm=False,
