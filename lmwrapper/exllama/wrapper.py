@@ -1,25 +1,30 @@
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
 import numpy as np
 
 from lmwrapper.abstract_predictor import LmPredictor
-from lmwrapper.prompt_trimming import PromptTrimmer
 from lmwrapper.structs import LmChatDialog, LmPrediction, LmPrompt
 
 try:
-    from vllm import LLM, SamplingParams
+    from exllamav2 import (
+        ExLlamaV2,
+        ExLlamaV2Cache,
+        ExLlamaV2Config,
+        ExLlamaV2Tokenizer,
+    )
+    from exllamav2.generator import ExLlamaV2BaseGenerator, ExLlamaV2Sampler
 
     # assert version.parse(torch.__version__) >= version.parse("2.0")
 except ImportError:
-    msg = "Error importing vLLM. Please verify your installation."
+    msg = "Error importing ExLLamaV2. Please verify your installation."
     raise ImportError(
         msg,
     )
 
 
 @dataclass
-class vLLMPrediction(LmPrediction):
+class ExLlamaPrediction(LmPrediction):
     _tokens: Any
     _log_probs: Any
     _logprobs_dict: dict
@@ -73,23 +78,38 @@ class vLLMPrediction(LmPrediction):
         return self._logprobs_dict
 
 
-class vLLMPredictor(LmPredictor):
+class ExLlamaPredictor(LmPredictor):
     def __init__(
         self,
-        llm: LLM,
+        generator: ExLlamaV2BaseGenerator,
+        tokenizer: ExLlamaV2Tokenizer,
     ):
-        self._llm = llm
+        self._llm = generator
+        self._tokenizer = tokenizer
 
     def _get_cache_key_metadata(self):
         return {
-            "model": "vLLMPredictor",
-            "name_or_path": self._llm.llm_engine.model_config.model,
+            "model": "ExLlamaPredictor",
+            "name_or_path": self._llm.model.config.model_dir,
         }
 
     def _predict_maybe_cached(
         self,
         prompt: LmPrompt,
     ) -> LmPrediction | list[LmPrediction]:
+        if prompt.n > 1:
+            raise ValueError("Multiple completions not supported yet.")
+
+        # TODO:
+        # collected_outputs = []
+        # for b, batch in enumerate(batches):
+
+        #     print(f"Batch {b + 1} of {len(batches)}...")
+
+        #     outputs = generator.generate_simple(batch, settings, max_new_tokens, seed = 1234)
+
+        #     trimmed_outputs = [o[len(p):] for p, o in zip(batch, outputs)]
+        #     collected_outputs += trimmed_outputs
         echo_without_generation = prompt.echo and prompt.max_tokens == 0
 
         sampling_params = SamplingParams(
@@ -106,6 +126,19 @@ class vLLMPredictor(LmPredictor):
             prompt_logprobs=prompt.logprobs if prompt.echo else None,
             skip_special_tokens=not prompt.add_special_tokens,
         )
+
+        settings = ExLlamaV2Sampler.Settings()
+        settings.temperature = prompt.temperature
+        settings.top_p = prompt.top_p
+        settings.top_k = prompt.top_k
+        settings.token_frequency_penalty = prompt.frequency_penalty
+        settings.token_presence_penalty = prompt.presence_penalty
+        settings.token_repetition_penalty = prompt.repetition_penalty
+        settings.disallow_tokens(self._tokenizer, [self._tokenizer.eos_token_id])
+
+        self._llm.set_stop_conditions(prompt.stop + [self._tokenizer.eos_token_id])
+        max_tokens = prompt.max_tokens if not echo_without_generation else 1
+        output = self._llm.generate_simple(prompt, settings, max_tokens, seed = 1234)
 
         if prompt.is_dialog():
             prompt_token_ids = self._tokenizer.apply_chat_template(
@@ -146,17 +179,20 @@ class vLLMPredictor(LmPredictor):
         return predictions if len(prediction) else predictions[0]
 
 
-def get_vllm_lm(
-    model: str,
-    tensor_parallel_size: int,
-    precision: Literal["float32", "float16", "half", "bfloat16", "auto"] = "auto",
-    trust_remote_code: bool = False,
-    prompt_trimmer: PromptTrimmer = None,
-) -> vLLMPredictor:
-    llm = LLM(
-        model=model,
-        trust_remote_code=trust_remote_code,
-        dtype=precision,
-        tensor_parallel_size=tensor_parallel_size,
-    )
-    return vLLMPredictor(llm)
+def get_exllama_lm(
+    model_directory: str,
+) -> ExLlamaPredictor:
+    config = ExLlamaV2Config()
+    config.model_dir = model_directory
+    config.prepare()
+
+    model = ExLlamaV2(config)
+
+    cache = ExLlamaV2Cache(model, lazy=True)
+    model.load_autosplit(cache)
+
+    tokenizer = ExLlamaV2Tokenizer(config)
+
+    generator = ExLlamaV2BaseGenerator(model, cache, tokenizer)
+    generator.warmup()
+    return ExLlamaPredictor(generator)
