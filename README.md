@@ -145,7 +145,7 @@ amount of seconds in the error before retrying.
 
 ```python
 from lmwrapper.openai import get_open_ai_lm, OpenAiModelNames
-lm = get_open_ai_lm(OpenAiModelNames.text_ada_001, retry_on_rate_limit=True)
+lm = get_open_ai_lm(OpenAiModelNames.gpt_3_5_turbo_instruct, retry_on_rate_limit=True)
 ```
 
 ## Other features
@@ -156,7 +156,7 @@ lm = get_open_ai_lm(OpenAiModelNames.text_ada_001, retry_on_rate_limit=True)
 from lmwrapper.openai import get_open_ai_lm, OpenAiModelNames
 from lmwrapper.structs import LmPrompt
 
-lm = get_open_ai_lm(OpenAiModelNames.text_ada_001)
+lm = get_open_ai_lm(OpenAiModelNames.gpt_3_5_turbo_instruct)
 assert lm.estimate_tokens_in_prompt(
     LmPrompt("My name is Spingldorph", max_tokens=10)) == 7
 assert not lm.could_completion_go_over_token_limit(LmPrompt(
@@ -179,45 +179,3 @@ please make a Github Issue.
 - [ ] Additional Huggingface runtimes (TensorRT, BetterTransformers, etc)
 - [ ] Anthropic interface
 - [ ] Cost estimating (so can estimate cost of a prompt before running / track total cost)
-
-# Project tree
-
-```
-.
-├── .github
-│   └── workflows
-├── .gitignore
-├── .vscode
-│   └── settings.json
-├── README.md
-├── build_utils
-│   ├── __init__.py
-│   └── openai_metadata.py
-├── environment.yml
-├── lmwrapper
-│   ├── HuggingfacePrediction.py
-│   ├── HuggingfacePredictor.py
-│   ├── _TokenStoppingCriteria.py
-│   ├── __init__.py
-│   ├── abstract_predictor.py
-│   ├── caching.py
-│   ├── env.py
-│   ├── huggingface_wrapper.py
-│   ├── openai_wrapper.py
-│   ├── prompt_trimming.py
-│   ├── runtime.py
-│   ├── secrets_manager.py
-│   ├── structs.py
-│   ├── utils.py
-│   └── wrapping_config.py
-├── pyproject.toml
-└── test
-    ├── __init__.py
-    ├── conftest.py
-    ├── test_caching.py
-    ├── test_docs.py
-    ├── test_huggingface.py
-    ├── test_models_common.py
-    ├── test_openai.py
-    └── test_prompt_trimming.py
-```

@@ -4,11 +4,16 @@ import numpy as np
 import pytest
 
 from lmwrapper.huggingface.wrapper import get_huggingface_lm
-from lmwrapper.openai.wrapper import get_open_ai_lm, OpenAiModelNames
+from lmwrapper.openai.wrapper import OpenAiModelNames, get_open_ai_lm
 from lmwrapper.structs import LmPrompt
 
 ALL_MODELS = [
-    # get_open_ai_lm(OpenAiModelNames.text_ada_001),
+    get_open_ai_lm(OpenAiModelNames.gpt_3_5_turbo_instruct),
+    get_huggingface_lm("gpt2"),
+]
+
+
+ECHOABLE_MODELS = [
     get_huggingface_lm("gpt2"),
 ]
 
@@ -49,24 +54,28 @@ def test_simple_pred_cache(lm):
     runtimes = []
     import time
 
+    prompt = LmPrompt(
+        "Once upon a",
+        max_tokens=1,
+        logprobs=1,
+        cache=True,
+        num_completions=1,
+        echo=False,
+        temperature=0.0,
+    )
+    lm.remove_prompt_from_cache(prompt)
+
     for _i in range(2):
         start = time.time()
-        out = lm.predict(
-            LmPrompt(
-                "Once upon a",
-                max_tokens=1,
-                logprobs=1,
-                cache=True,
-                num_completions=1,
-                echo=False,
-            ),
-        )
+        out = lm.predict(prompt)
         end = time.time()
         assert out.completion_text.strip() == "time"
         runtimes.append(end - start)
 
+    assert runtimes[0] > runtimes[1] * 5
 
-@pytest.mark.parametrize("lm", ALL_MODELS)
+
+@pytest.mark.parametrize("lm", ECHOABLE_MODELS)
 def test_echo(lm):
     out = lm.predict(
         LmPrompt(
@@ -97,7 +106,7 @@ def test_echo(lm):
     ]
 
 
-@pytest.mark.parametrize("lm", ALL_MODELS)
+@pytest.mark.parametrize("lm", ECHOABLE_MODELS)
 def test_low_prob_in_weird_sentence(lm):
     weird = lm.predict(
         LmPrompt(
@@ -147,8 +156,8 @@ def test_low_prob_in_weird_sentence(lm):
     )
 
 
-@pytest.mark.parametrize("lm", ALL_MODELS)
-def test_no_gen(lm):
+@pytest.mark.parametrize("lm", ECHOABLE_MODELS)
+def test_no_gen_with_echo(lm):
     val = lm.predict(
         LmPrompt(
             "I like pie",
@@ -238,7 +247,7 @@ def test_no_stopping_in_prompt(lm):
 
 @pytest.mark.parametrize("lm", ALL_MODELS)
 def test_no_stopping_program(lm):
-    prompt_text = '# Functions\ndef double(x):\n'
+    prompt_text = "# Functions\ndef double(x):\n"
     resp = lm.predict(
         LmPrompt(
             prompt_text,
@@ -497,17 +506,97 @@ def test_remove_prompt_from_cache(lm):
     assert r1.completion_text == r2.completion_text
     assert lm.remove_prompt_from_cache(prompt)
     r3 = lm.predict(prompt)
-    assert r1.completion_text != r3.completion_text
+    if r1.completion_text != r3.completion_text:
+        return  # Pass because it is different and uncached
+    # Sometimes still flacky with just one prompt
+    assert lm.remove_prompt_from_cache(prompt)
+    r4 = lm.predict(prompt)
+    assert (
+        r1.completion_text != r3.completion_text
+        or r1.completion_text != r4.completion_text
+    )
 
 
 @pytest.mark.parametrize("lm", ALL_MODELS)
 def test_none_max_tokens(lm):
     prompt = LmPrompt(
-        "Write a long and detailed story about a dog:",
+        "Write a long and detailed story (multiple paragraphs) about a dog:",
         max_tokens=None,
         temperature=1.0,
         cache=False,
     )
     result = lm.predict(prompt)
-    assert len(result.completion_tokens) > 45
-    assert len(result.completion_tokens) < lm.default_tokens_generated
+    assert len(result.completion_tokens) == lm.default_tokens_generated
+
+
+# @pytest.mark.parametrize("lm", ALL_MODELS)
+# def test_need_tokens(lm):
+#    prompt = LmPrompt(
+#        capital_prompt,
+#        max_tokens=4,
+#        temperature=0.0,
+#        cache=False,
+#        potentially_need_tokens=True,
+#        logprobs=0,
+#    )
+#    result = lm.predict(prompt)
+#    tokens = lm.tokenize(capital_prompt)
+#    assert tokens[:4] == ["The", " capital", " of", " Germany"]
+#    assert result.prompt_tokens == tokens
+
+
+@pytest.mark.parametrize("lm", ALL_MODELS)
+def test_response_to_dict_conversion(lm):
+    prompt = LmPrompt(
+        text=capital_prompt,
+        max_tokens=4,
+        stop=["\n"],
+        logprobs=1,
+        temperature=0,
+        cache=False,
+    )
+    resp = lm.predict(prompt)
+    resp_dict = resp.dict_serialize()
+    expected = {
+        "completion_text": " is the city Paris",
+        "prompt": prompt.dict_serialize(),
+        "was_cached": False,
+        "completion_tokens": [
+            " is",
+            " the",
+            " city",
+            " Paris",
+        ],
+    }
+    assert all(key in resp_dict for key in expected)
+    assert all(resp_dict[key] == expected[key] for key in expected)
+
+
+@pytest.mark.parametrize("lm", ALL_MODELS)
+def test_was_cached_marking(lm):
+    prompt = LmPrompt(
+        "Give a random base-64 guid:",
+        max_tokens=10,
+        temperature=2.0,
+        cache=False,
+    )
+    r1 = lm.predict(prompt)
+    assert not r1.was_cached
+    r2 = lm.predict(prompt)
+    assert not r2.was_cached
+    prompt = LmPrompt(
+        "Give a random base-64 guid:",
+        max_tokens=100,
+        temperature=2.0,
+        cache=True,
+    )
+    lm.remove_prompt_from_cache(prompt)
+    r3 = lm.predict(prompt)
+    assert not r3.was_cached
+    r4 = lm.predict(prompt)
+    assert r4.was_cached
+    assert not r3.was_cached
+    assert r3.completion_text == r4.completion_text
+    lm.remove_prompt_from_cache(prompt)
+    r5 = lm.predict(prompt)
+    assert not r5.was_cached

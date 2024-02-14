@@ -85,6 +85,7 @@ class LmPrompt:
     could be controlled in other models."""
     add_special_tokens: bool = True
     """Whether or not to add special tokens when encoding the prompt."""
+
     # TODO: make a auto_reduce_max_tokens to reduce when might go over.
 
     def __post_init__(self):
@@ -147,6 +148,32 @@ class LmPrompt:
         else:
             return self.text
 
+    def dict_serialize(self) -> dict:
+        """
+        Serialize the prompt into a json-compatible dictionary. Note this is not
+        guaranteed to be the same as the JSON representation for use
+        in an openai api call. This is just for serialization purposes.
+        """
+        out = {
+            "max_tokens": self.max_tokens,
+            "stop": self.stop,
+            "logprobs": self.logprobs,
+            "temperature": self.temperature,
+            "top_p": self.top_p,
+            "presence_penalty": self.presence_penalty,
+            "frequency_penalty": self.frequency_penalty,
+            "num_completions": self.num_completions,
+            "cache": self.cache,
+            "echo": self.echo,
+            "add_bos_token": self.add_bos_token,
+            "add_special_tokens": self.add_special_tokens,
+        }
+        if self.is_text_a_chat():
+            out["text"] = self.get_text_as_chat().as_dicts()
+        else:
+            out["text"] = self.text
+        return out
+
 
 class ChatGptRoles(StrEnum):
     system = "system"
@@ -206,7 +233,7 @@ class LmChatDialog(list[LmChatTurn]):
 
     def as_dicts(self) -> list[dict]:
         return [
-            {k: v for k, v in chat_turn.__dict__.items() if v is not None}
+            {k: str(v) for k, v in chat_turn.__dict__.items() if v is not None}
             for chat_turn in self
         ]
 
@@ -232,6 +259,17 @@ class LmPrediction:
     completion_text: str
     prompt: LmPrompt
     metad: Any
+
+    def __post_init__(self):
+        self._was_cached = False
+
+    @property
+    def was_cached(self) -> bool:
+        return hasattr(self, "_was_cached") and self._was_cached
+
+    def mark_as_cached(self) -> "LmPrediction":
+        self._was_cached = True
+        return self
 
     def _verify_logprobs(self):
         if self.prompt.logprobs is None or self.prompt.logprobs == 0:
@@ -307,3 +345,42 @@ class LmPrediction:
         raise NotImplementedError(
             msg,
         )
+
+    def dict_serialize(
+        self,
+        pull_out_props: bool = True,
+        include_metad: bool = False,
+    ) -> dict[str, Any]:
+        out = {
+            "completion_text": self.completion_text,
+            "prompt": self.prompt.dict_serialize(),
+            "was_cached": self.was_cached,
+        }
+        if pull_out_props:
+            try:
+                out["prompt_tokens"] = self.prompt_tokens
+            except Exception:
+                pass
+            try:
+                out["completion_tokens"] = self.completion_tokens
+            except Exception:
+                pass
+            try:
+                out["prompt_logprobs"] = self.prompt_logprobs
+            except Exception:
+                pass
+            try:
+                out["completion_logprobs"] = self.completion_logprobs
+            except Exception:
+                pass
+            try:
+                out["full_logprobs"] = self.full_logprobs
+            except Exception:
+                pass
+            try:
+                out["top_token_logprobs"] = self.top_token_logprobs
+            except Exception:
+                pass
+        if include_metad:
+            out["metad"] = self.metad
+        return out

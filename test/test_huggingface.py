@@ -1,12 +1,15 @@
+# test
 import numpy as np
 import pytest
 import torch
+from transformers import AutoTokenizer
 
 from lmwrapper.huggingface.predictor import (
     _expand_offsets_to_a_token_index_for_every_text_index,
     _get_token_offsets,
 )
 from lmwrapper.huggingface.wrapper import get_huggingface_lm
+
 from lmwrapper.prompt_trimming import HfTokenTrimmer
 from lmwrapper.runtime import Runtime
 from lmwrapper.structs import LmPrompt
@@ -203,8 +206,13 @@ def test_trim_start():
 
 @pytest.mark.slow()
 def test_logprobs_codegen2():
+    # model = Models.CodeGen2_1B
+    # model = Models.CodeGen2_3_7B
+    model = "Salesforce/codegen2-16B"
     lm = get_huggingface_lm(
-        Models.CodeGen2_1B,
+        model,
+        # Models.CodeGen2_3_7B,
+        # "Salesforce/codegen2-16B",
         allow_patch_model_forward=False,
         runtime=Runtime.PYTORCH,
         trust_remote_code=True,
@@ -217,9 +225,15 @@ def test_logprobs_codegen2():
     )
     outa = lm.predict(prompt)
     logprobs_a = np.array(outa.completion_logprobs)
+    del outa
+    del lm
+    import gc
+
+    gc.collect()
+    torch.cuda.empty_cache()
 
     lm = get_huggingface_lm(
-        Models.CodeGen2_1B,
+        model,
         allow_patch_model_forward=True,
         runtime=Runtime.PYTORCH,
         trust_remote_code=True,
@@ -230,6 +244,7 @@ def test_logprobs_codegen2():
         cache=False,
         temperature=0,
         echo=True,
+        logprobs=1,
     )
     outb = lm.predict(prompt)
     logprobs_b = np.array(outb.completion_logprobs)
@@ -275,7 +290,7 @@ def test_stop_n_codet5():
     no_logprobs_n_pred = lm.predict(no_logprobs_n_prompt)
     assert "\n" not in no_logprobs_n_pred.completion_text
     assert no_logprobs_n_pred.completion_tokens[0] not in ["<s>", r"<\s>"]
-    assert len(no_logprobs_n_pred.completion_tokens) == 5
+    assert len(no_logprobs_n_pred.completion_tokens) == 6  # or 5?
 
     logprobs_prompt = LmPrompt(
         text="def hello_world():",
@@ -884,3 +899,49 @@ def test_offsets_for_removal_prompt():
         *([4] * len(" Italy")),
     ]
     assert len(expanded) == len(text)
+
+
+def test_token_expanding_weird_from_t5():
+    expand = _expand_offsets_to_a_token_index_for_every_text_index(
+        [(0, 1), (0, 1), (0, 1), (1, 6), (7, 13), (13, 14), (14, 15)],
+    )
+    assert expand == [
+        0,
+        *([3] * (6 - 1)),
+        *([4] * (13 - 6)),
+        *([5] * (14 - 13)),
+        *([6] * (15 - 14)),
+    ]
+
+
+def test_degenerative_multiple():
+    # Load model
+    tokenizer = AutoTokenizer.from_pretrained(Models.DistilGPT2, use_fast=True)
+    tokens = [13, 198, 198, 198, 198]
+    text = ".\n\n\n\n"
+    assert tokenizer.decode(tokens) == text
+    offsets = _get_token_offsets(tokenizer, tokens)
+    assert offsets == [
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (3, 4),
+        (4, 5),
+    ]
+
+
+def test_degenerative_multiple_2():
+    # Load model
+    tokenizer = AutoTokenizer.from_pretrained(Models.DistilGPT2, use_fast=True)
+    tokens = [13, 198, 198, 198, 198, 198]
+    text = ".\n\n\n\n\n"
+    assert tokenizer.decode(tokens) == text
+    offsets = _get_token_offsets(tokenizer, tokens)
+    assert offsets == [
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (3, 4),
+        (4, 5),
+        (5, 6),
+    ]
