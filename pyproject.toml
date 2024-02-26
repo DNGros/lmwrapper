@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68.2.2"]
+requires      = ["setuptools>=68.2.2"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -28,9 +28,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["ruff~=0.2.2", "pytest~=8.0.2", "pytest-cov~=4.1.0"]
+dev   = ["ruff~=0.2.2", "pytest~=8.0.2", "pytest-cov~=4.1.0"]
 quant = ["bitsandbytes~=0.42.0"]
-hf = ["torch~=2.2.1", "transformers~=4.38.1"]
+hf    = ["torch~=2.2.1", "transformers~=4.38.1"]
 # Torch nightlies can be installed as follows:
 # CPU: pip3 install --pre torch --index-url https://download.pytorch.org/whl/nightly/cpu
 # CUDA: pip3 install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121
@@ -40,24 +40,22 @@ hf-dev = [
 ]
 accelerate = ["accelerate~=0.23.0"]
 xformers = ["xformers~=0.0.24"]
-flash-attn = [ "flash_attn~=2.5.5"]
+flash-attn = ["flash_attn~=2.5.5"]
 ort = ["optimum[onnxruntime]~=1.13.2"]
 # This will also install accelerate:
 ort-gpu = ["optimum[onnxruntime-gpu]~=1.13.2"]
-vllm = ["vllm~=0.3.2"]
+vllm    = ["vllm~=0.3.2"]
 exllama = ["exllamav2~=0.0.14"]
 
 [project.urls]
 "Homepage" = "https://github.com/DNGros/lmwrapper"
 
-[tool.black]
-line-length = 88
-target-version = ['py310']
-
 [tool.ruff]
-fix-only = true
-line-length = 88
-select = [
+line-length    = 88
+target-version = "py310"
+fix-only       = true
+#preview = true
+lint.select = [
     # Pyflakes
     "F",
     # Pycodestyle
@@ -107,7 +105,7 @@ select = [
     "ERA",
 ]
 
-ignore = [
+lint.ignore = [
     # missing-type-function-argument (ANN001)
     "ANN001",
 
@@ -245,9 +243,16 @@ ignore = [
 
     # suspicious-xml-mini-dom-usage (S318)
     "S318",
+
     # Commented out code
     "ERA001",
+
     # No space after block comment
     "E265",
 
+    # single-line-implicit-string-concatenation (ISC001)
+    "ISC001",
+
+    # missing-trailing-comma (COM812)
+    "COM812",
 ]

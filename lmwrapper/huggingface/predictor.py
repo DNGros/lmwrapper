@@ -51,7 +51,11 @@ class HuggingFacePredictor(LmPredictor):
         self,
         prompt: LmPrompt,
     ) -> LmPrediction | list[LmPrediction]:
-        if not prompt.is_text_a_chat() and not isinstance(prompt.text, str) and len(prompt.text) != 1:
+        if (
+            not prompt.is_text_a_chat()
+            and not isinstance(prompt.text, str)
+            and len(prompt.text) != 1
+        ):
             msg = "Prompt batches other than size 1 are not supported."
             raise NotImplementedError(
                 msg,
@@ -523,11 +527,11 @@ class HuggingFacePredictor(LmPredictor):
     def _does_this_tokenizer_seem_add_a_bos(self, add_special_tokens) -> bool:
         if self._tokenizer_already_adds_bos.get(add_special_tokens, None) is not None:
             return self._tokenizer_already_adds_bos[add_special_tokens]
-        self._tokenizer_already_adds_bos[add_special_tokens] = (
-            _check_tokenizer_to_see_if_adds_bos(
-                self._tokenizer,
-                add_special_tokens,
-            )
+        self._tokenizer_already_adds_bos[
+            add_special_tokens
+        ] = _check_tokenizer_to_see_if_adds_bos(
+            self._tokenizer,
+            add_special_tokens,
         )
         return self._tokenizer_already_adds_bos[add_special_tokens]
 

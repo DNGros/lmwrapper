@@ -1030,11 +1030,14 @@ def test_degenerative_multiple_2():
 
 
 @pytest.mark.slow()
-@pytest.mark.parametrize("model", [
-    #Models.CodeT5plus_6B,  # This seems not to indent properly for unexplored reasons
-    Models.CodeGen2_1B,
-    Models.Mistral_7B,
-])
+@pytest.mark.parametrize(
+    "model",
+    [
+        # Models.CodeT5plus_6B,  # This seems not to indent properly for unexplored reasons
+        Models.CodeGen2_1B,
+        Models.Mistral_7B,
+    ],
+)
 def test_hello_world_prompt(model):
     if SMALL_GPU and model in BIG_MODELS:
         pytest.skip(

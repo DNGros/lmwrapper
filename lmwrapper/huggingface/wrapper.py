@@ -374,10 +374,8 @@ def _configure_model(
         # only autoclasses do
         _kwargs.pop("trust_remote_code", None)
     elif (
-        (model.startswith("Salesforce/codet5p-")
-        and model.endswith("b"))
-        or model == "Salesforce/instructcodet5p-16b"
-    ):
+        model.startswith("Salesforce/codet5p-") and model.endswith("b")
+    ) or model == "Salesforce/instructcodet5p-16b":
         model_class = AutoModelForSeq2SeqLM
         _kwargs |= {
             "low_cpu_mem_usage": True,
@@ -666,4 +664,3 @@ def _initialize_hf_model(
         allow_patch_model_forward=allow_patch_model_forward,
         prompt_trimmer=prompt_trimmer,
     )
-
