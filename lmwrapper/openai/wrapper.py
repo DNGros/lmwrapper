@@ -125,9 +125,12 @@ class OpenAiLmPrediction(LmPrediction):
         so there may be up to logprobs+1 elements in the response.
         """
         if self.metad.get("logprobs", {}).get("top_logprobs", None) is None:
-            raise ValueError(
+            msg = (
                 "Response does not contain top_logprobs. Are you sure logprobs was set"
-                f" > 0? Currently: {self.prompt.logprobs}",
+                f" > 0? Currently: {self.prompt.logprobs}"
+            )
+            raise ValueError(
+                msg,
             )
         return [dict(p) for p in self.metad["logprobs"]["top_logprobs"]]
 
@@ -175,7 +178,7 @@ class OpenAIPredictor(LmPredictor):
         self._tokenizer = None
 
     @classmethod
-    def add_instantiation_hook(cls, hook: "OpenAiInstantiationHook"):
+    def add_instantiation_hook(cls, hook: "OpenAiInstantiationHook") -> None:
         """
         This method should likely not be used normally.
         It is intended add constraints on kinds of models that are
@@ -281,17 +284,16 @@ class OpenAIPredictor(LmPredictor):
                         n=prompt.num_completions,
                         echo=prompt.echo,
                     )
-                else:
-                    return self._api.ChatCompletion.create(
-                        model=self._engine_name,
-                        messages=prompt.get_text_as_chat().as_dicts(),
-                        temperature=prompt.temperature,
-                        max_tokens=max_toks,
-                        stop=prompt.stop,
-                        top_p=prompt.top_p,
-                        n=prompt.num_completions,
-                        presence_penalty=prompt.presence_penalty,
-                    )
+                return self._api.ChatCompletion.create(
+                    model=self._engine_name,
+                    messages=prompt.get_text_as_chat().as_dicts(),
+                    temperature=prompt.temperature,
+                    max_tokens=max_toks,
+                    stop=prompt.stop,
+                    top_p=prompt.top_p,
+                    n=prompt.num_completions,
+                    presence_penalty=prompt.presence_penalty,
+                )
             except openai.error.RateLimitError as e:
                 print(e)
                 return e

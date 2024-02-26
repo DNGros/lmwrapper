@@ -37,8 +37,7 @@ class HuggingFacePrediction(LmPrediction):
         self._verify_logprobs()
         if self.prompt.echo:
             return self._log_probs[self._num_prompt_tokens :]
-        else:
-            return self._log_probs
+        return self._log_probs
 
     @property
     def prompt_tokens(self):

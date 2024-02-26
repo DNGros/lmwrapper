@@ -14,8 +14,6 @@ try:
         ExLlamaV2Tokenizer,
     )
     from exllamav2.generator import ExLlamaV2BaseGenerator, ExLlamaV2Sampler
-
-    # assert version.parse(torch.__version__) >= version.parse("2.0")
 except ImportError:
     msg = "Error importing ExLLamaV2. Please verify your installation."
     raise ImportError(
@@ -49,8 +47,7 @@ class ExLlamaPrediction(LmPrediction):
         self._verify_logprobs()
         if self.prompt.echo:
             return self._log_probs[self._num_prompt_tokens :]
-        else:
-            return self._log_probs
+        return self._log_probs
 
     @property
     def prompt_tokens(self):
@@ -98,7 +95,8 @@ class ExLlamaPredictor(LmPredictor):
         prompt: LmPrompt,
     ) -> LmPrediction | list[LmPrediction]:
         if prompt.n > 1:
-            raise ValueError("Multiple completions not supported yet.")
+            msg = "Multiple completions not supported yet."
+            raise ValueError(msg)
 
         # TODO:
         # collected_outputs = []
@@ -136,11 +134,11 @@ class ExLlamaPredictor(LmPredictor):
         settings.token_repetition_penalty = prompt.repetition_penalty
         settings.disallow_tokens(self._tokenizer, [self._tokenizer.eos_token_id])
 
-        self._llm.set_stop_conditions(prompt.stop + [self._tokenizer.eos_token_id])
+        self._llm.set_stop_conditions([*prompt.stop, self._tokenizer.eos_token_id])
         max_tokens = prompt.max_tokens if not echo_without_generation else 1
-        output = self._llm.generate_simple(prompt, settings, max_tokens, seed = 1234)
+        self._llm.generate_simple(prompt, settings, max_tokens, seed=1234)
 
-        if prompt.is_dialog():
+        if prompt.is_text_a_chat():
             prompt_token_ids = self._tokenizer.apply_chat_template(
                 prompt.text.as_dicts()
                 if isinstance(prompt.text, LmChatDialog)

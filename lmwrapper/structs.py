@@ -1,3 +1,4 @@
+import contextlib
 import statistics
 from dataclasses import dataclass
 from typing import Any, Union
@@ -132,7 +133,7 @@ class LmPrompt:
                 msg,
             )
 
-    def is_dialog(self) -> bool:
+    def is_text_a_chat(self) -> bool:
         return isinstance(self.text, list)
 
     def get_text_as_chat(self) -> "LmChatDialog":
@@ -143,10 +144,9 @@ class LmPrompt:
         Will always return a string, even if it was originally a chat. It will use
         the default form of the chat specified in LmChatDialog.to_default_string_prompt()
         """
-        if self.is_dialog():
+        if self.is_text_a_chat():
             return self.text.to_default_string_prompt()
-        else:
-            return self.text
+        return self.text
 
     def dict_serialize(self) -> dict:
         """
@@ -357,30 +357,18 @@ class LmPrediction:
             "was_cached": self.was_cached,
         }
         if pull_out_props:
-            try:
+            with contextlib.suppress(Exception):
                 out["prompt_tokens"] = self.prompt_tokens
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 out["completion_tokens"] = self.completion_tokens
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 out["prompt_logprobs"] = self.prompt_logprobs
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 out["completion_logprobs"] = self.completion_logprobs
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 out["full_logprobs"] = self.full_logprobs
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 out["top_token_logprobs"] = self.top_token_logprobs
-            except Exception:
-                pass
         if include_metad:
             out["metad"] = self.metad
         return out

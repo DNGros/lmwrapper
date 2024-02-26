@@ -41,7 +41,8 @@ class CharPromptTrimmer(PromptTrimmer):
 
 class TrimmingTokenizer:
     @abstractmethod
-    def tokenize(self, text: str) -> list[str]: ...
+    def tokenize(self, text: str) -> list[str]:
+        ...
 
 
 class HfTrimmingTokenizer(TrimmingTokenizer):
@@ -86,9 +87,8 @@ class GenericTokenTrimmer(PromptTrimmer):
 
         if self.start_from_left_side:
             offset = self.token_limit
-        else:
-            if len(tokenized) > self.token_limit:
-                offset = -self.token_limit
+        elif len(tokenized) > self.token_limit:
+            offset = -self.token_limit
 
         tokenized = tokenized[:offset]
 

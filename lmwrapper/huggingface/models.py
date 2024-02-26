@@ -2,7 +2,7 @@ class HuggingFaceModelInfo(str):
     def __new__(
         cls,
         name: str,
-        token_limit: int = None,
+        token_limit: int | None = None,
         supports_completion: bool = True,
         supports_infill: bool = False,
         supports_instructions: bool = False,

@@ -15,7 +15,7 @@ from lmwrapper.structs import LmChatDialog, LmPrediction, LmPrompt
 from lmwrapper.utils import log_cuda_mem
 
 from .prediction import HuggingFacePrediction
-from .token_stopping_criteria import TokenStoppingCriteria
+from .stopping_criteria import StringStoppingCriteria
 
 if TYPE_CHECKING:
     from transformers.generation.utils import GenerateOutput
@@ -50,7 +50,7 @@ class HuggingFacePredictor(LmPredictor):
         self,
         prompt: LmPrompt,
     ) -> LmPrediction | list[LmPrediction]:
-        if not isinstance(prompt.text, str) and len(prompt.text) != 1:
+        if not prompt.is_text_a_chat() and not isinstance(prompt.text, str) and len(prompt.text) != 1:
             msg = "Prompt batches other than size 1 are not supported."
             raise NotImplementedError(
                 msg,
@@ -110,7 +110,7 @@ class HuggingFacePredictor(LmPredictor):
         if self.prompt_trimmer:
             prompt_text = self.prompt_trimmer.trim_text(prompt_text)
 
-        if prompt.is_dialog():
+        if prompt.is_text_a_chat():
             encoded_input = self._tokenizer.apply_chat_template(
                 prompt.text.as_dicts()
                 if isinstance(prompt.text, LmChatDialog)
@@ -137,11 +137,10 @@ class HuggingFacePredictor(LmPredictor):
                 raise ValueError(
                     msg,
                 )
-            else:
-                msg = "Prompt is too long for model. Please pass in a trimmer."
-                raise ValueError(
-                    msg,
-                )
+            msg = "Prompt is too long for model. Please pass in a trimmer."
+            raise ValueError(
+                msg,
+            )
 
         if is_encoder_decoder:
             encoded_input["decoder_input_ids"] = encoded_input["input_ids"].clone()
@@ -214,13 +213,18 @@ class HuggingFacePredictor(LmPredictor):
         else:
             logging.info("Unable to predict decoding strategy!")
 
+        max_new_tokens = (
+            self.default_tokens_generated
+            if prompt.max_tokens is None
+            else prompt.max_tokens
+        )
+        if max_new_tokens == 0:
+            max_new_tokens += 1  # Huggingface produces one token always
+        # Ref https://github.com/huggingface/transformers/pull/28621
+
         # Ref https://gist.github.com/kinoc/8a042d8c5683725aa8c372274c02ea2f
         gen_config = GenerationConfig(
-            max_new_tokens=(
-                self.default_tokens_generated
-                if prompt.max_tokens is None
-                else prompt.max_tokens
-            ),
+            max_new_tokens=max_new_tokens,
             return_dict_in_generate=True,
             output_scores=need_log_prob,
             **optional_generation_kwargs,
@@ -268,15 +272,14 @@ class HuggingFacePredictor(LmPredictor):
         )
         if prompt.stop:
             stopping_criteria = [
-                TokenStoppingCriteria(
+                StringStoppingCriteria(
                     prompt.stop,
-                    decode=True,
                     tokenizer=self._tokenizer,
                     input_length=input_length,
                 ),
             ]
 
-        with torch.no_grad():
+        with torch.inference_mode():
             generation_output: GenerateOutput = self._model.generate(
                 **encoded_input,
                 generation_config=gen_config,
@@ -317,7 +320,7 @@ class HuggingFacePredictor(LmPredictor):
                 token_offsets,
             )
             if len(token_offsets_full) != len(generated_text):
-                raise RuntimeError(
+                msg = (
                     "Unexpected token offsets length\nGenerated text:"
                     f" '{generated_text}'\nToken offsets: {token_offsets}\nTokens:"
                     f" {self._tokenizer.convert_ids_to_tokens(generated_sequence)}\nToken"
@@ -325,7 +328,10 @@ class HuggingFacePredictor(LmPredictor):
                     f" {generated_sequence}\nSpecial ids:"
                     f" {self._tokenizer.all_special_ids}\nlen(token_offsets_full):"
                     f" {len(token_offsets_full)}\nlen(generated_text):"
-                    f" {len(generated_text)}\n",
+                    f" {len(generated_text)}\n"
+                )
+                raise RuntimeError(
+                    msg,
                 )
             sorted_stop_sequences = sorted(prompt.stop, key=len, reverse=True)
 
@@ -545,14 +551,16 @@ class HuggingFacePredictor(LmPredictor):
                 ],
             )
         if all(val is None for val in vals):
-            raise ValueError("Unknown max length")
+            msg = "Unknown max length"
+            raise ValueError(msg)
         limit = max(val for val in vals if val is not None)
         if limit < 100:
-            raise ValueError("Unexpectedly low token limit")
+            msg = "Unexpectedly low token limit"
+            raise ValueError(msg)
         return limit
 
     def estimate_tokens_in_prompt(self, prompt: LmPrompt) -> int:
-        if prompt.is_dialog():
+        if prompt.is_text_a_chat():
             raise NotImplementedError
         return len(self.tokenize(prompt.text))
 
@@ -579,8 +587,7 @@ def _verify_concatenable(generated_tokens: list[str], generated_text: str):
         )
         if raise_exception:
             raise NotImplementedError(msg)
-        else:
-            logging.warning(msg)
+        logging.warning(msg)
 
 
 def _get_token_offsets(
@@ -592,12 +599,16 @@ def _get_token_offsets(
         token_ids = token_ids.tolist()
 
     if not isinstance(token_ids, list):
-        raise TypeError("token_ids must be a list or tensor")
+        msg = "token_ids must be a list or tensor"
+        raise TypeError(msg)
 
     if not tokenizer.is_fast:
-        raise ValueError(
+        msg = (
             "This requires a fast tokenizer so that way we can "
-            "use the return_offsets_mapping option",
+            "use the return_offsets_mapping option"
+        )
+        raise ValueError(
+            msg,
         )
 
     re_decoded = tokenizer.decode(
@@ -663,9 +674,12 @@ def _attempt_to_fix_degenerate_merges(
         if output_tokens == new_tokenization:
             return new_tokenization, new_tokenization_offsets
     if len(output_tokens) < len(new_tokenization):
-        raise ValueError(
+        msg = (
             "Cannot fix solutions when there are more new tokens than output tokens. "
-            "Expect cases where output has more because of extra unmerged tokens.",
+            "Expect cases where output has more because of extra unmerged tokens."
+        )
+        raise ValueError(
+            msg,
         )
     output_idx = 0
     new_idx = 0
@@ -721,7 +735,7 @@ def _expand_offsets_to_a_token_index_for_every_text_index(
     token_offsets = _merge_equivalent_consecutive_spans(token_offsets)
     token_offsets_full = []
     for i, (start, end) in enumerate(token_offsets):
-        last_start, last_end = token_offsets[i - 1] if i > 0 else (0, start)
+        _last_start, last_end = token_offsets[i - 1] if i > 0 else (0, start)
         token_offsets_full.extend([i] * (end - last_end))
     return token_offsets_full
 

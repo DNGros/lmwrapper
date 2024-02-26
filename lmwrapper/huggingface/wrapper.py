@@ -3,15 +3,12 @@ from importlib.metadata import version as import_version
 from pathlib import Path
 from typing import Literal
 
-import openai
 from packaging import version
 
 from lmwrapper.env import _MPS_ENABLED, _ONNX_RUNTIME, _QUANTIZATION_ENABLED
 from lmwrapper.huggingface.predictor import HuggingFacePredictor
-from lmwrapper.openai.wrapper import get_open_ai_lm
 from lmwrapper.prompt_trimming import PromptTrimmer
 from lmwrapper.runtime import Runtime
-from lmwrapper.structs import LmPrompt
 from lmwrapper.utils import log_cuda_mem
 
 try:
@@ -157,15 +154,19 @@ def _get_accelerator() -> torch.device:
     >>> device = _get_accelerator()
     >>> print(device)
     cuda # or mps or cpu
+
     """
     if torch.cuda.is_available():
         if _QUANTIZATION_ENABLED and _QUANT_CONFIG:
             # If quantization is enabled and bits and bytes is not
             # compiled with CUDA, things don't work right
             if not bitsandbytes.COMPILED_WITH_CUDA:
-                raise Exception(
+                msg = (
                     "Quantization was enabled but `bitsandbytes` is not compiled with"
-                    " CUDA.",
+                    " CUDA."
+                )
+                raise Exception(
+                    msg,
                 )
         return torch.device("cuda")
 
@@ -173,6 +174,7 @@ def _get_accelerator() -> torch.device:
         return torch.device("mps")
 
     return torch.device("cpu")
+
 
 def get_huggingface_lm(
     model: str,
@@ -232,12 +234,13 @@ def get_huggingface_lm(
     --------
     >>> predictor = get_huggingface_lm("gpt-2")
     >>> predictor = get_huggingface_lm("gpt-2", precision=torch.float16, device="cuda:0")
+
     """
     if isinstance(device, str):
         if device.strip() == "":
-            raise ValueError("Empty string provided for device.")
-        else:
-            device = torch.device(device)
+            msg = "Empty string provided for device."
+            raise ValueError(msg)
+        device = torch.device(device)
 
     # if runtime != Runtime.PYTORCH:
     #     msg = (
@@ -341,6 +344,7 @@ def _configure_model(
     --------
     >>> model_class, kwargs = _configure_model("gpt-2", config, Runtime.PYTORCH, {})
     >>> model_class, kwargs = _configure_model("Salesforce/codegen", config, Runtime.BETTER_TRANSFORMER, {})
+
     """
     model_class: AutoPretrainedModelType = AutoModelForCausalLM
     model_config_dict = model_config.to_dict()
@@ -369,12 +373,11 @@ def _configure_model(
         # T5 class does not support this arg,
         # only autoclasses do
         _kwargs.pop("trust_remote_code", None)
-    elif model.startswith("Salesforce/codet5p-") and model.endswith("b"):
-        model_class = AutoModelForSeq2SeqLM
-        _kwargs |= {
-            "low_cpu_mem_usage": True,
-        }
-    elif model == "Salesforce/instructcodet5p-16b":
+    elif (
+        (model.startswith("Salesforce/codet5p-")
+        and model.endswith("b"))
+        or model == "Salesforce/instructcodet5p-16b"
+    ):
         model_class = AutoModelForSeq2SeqLM
         _kwargs |= {
             "low_cpu_mem_usage": True,
@@ -485,7 +488,7 @@ def _initialize_hf_model(
     allow_patch_model_forward: bool = True,
     prompt_trimmer: PromptTrimmer = None,
     device: torch.device = None,
-    _kwargs: dict = {},
+    _kwargs: dict | None = None,
 ) -> HuggingFacePredictor:
     """
     Initialize a Hugging Face model for prediction based on various configurations.
@@ -538,7 +541,10 @@ def _initialize_hf_model(
     --------
     >>> predictor = _initialize_hf_model('gpt-2', AutoModelForCausalLM, config)
     >>> predictor = _initialize_hf_model('Salesforce/codegen', AutoModelForSeq2SeqLM, config, runtime=Runtime.BETTER_TRANSFORMER)
+
     """
+    if _kwargs is None:
+        _kwargs = {}
     torch_device = _get_accelerator() if device is None else device
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -576,7 +582,7 @@ def _initialize_hf_model(
         _kwargs.pop("low_cpu_mem_usage", None)
         _kwargs.pop("device_map", None)
 
-        save_dir = f"{model_name.replace('/','_')}_optimized_cpu_o3"
+        save_dir = f"{model_name.replace('/', '_')}_optimized_cpu_o3"
 
         if not Path(save_dir).exists():
             model = get_ort_model(model_class).from_pretrained(
@@ -609,7 +615,7 @@ def _initialize_hf_model(
         _kwargs.pop("low_cpu_mem_usage", None)
         _kwargs.pop("device_map", None)
 
-        save_dir = f"{model_name.replace('/','_')}_optimized_gpu_o3"
+        save_dir = f"{model_name.replace('/', '_')}_optimized_gpu_o3"
 
         if not Path(save_dir).exists():
             model = get_ort_model(model_class).from_pretrained(
@@ -652,7 +658,7 @@ def _initialize_hf_model(
             " cause unexpected behavior.",
         )
 
-    predictor = get_huggingface_predictor(
+    return get_huggingface_predictor(
         tokenizer=tokenizer,
         model=model,
         device=torch_device,
@@ -661,4 +667,3 @@ def _initialize_hf_model(
         prompt_trimmer=prompt_trimmer,
     )
 
-    return predictor

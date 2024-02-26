@@ -1,12 +1,19 @@
-import numpy as np
 import pytest
-import torch
 
-from lmwrapper.vllm.wrapper import get_vllm_lm
-from lmwrapper.runtime import Runtime
 from lmwrapper.structs import LmPrompt
-from lmwrapper.utils import StrEnum
 
+VLLM_UNAVAILABLE = True
+try:
+    from vllm import LLM, SamplingParams
+
+    from lmwrapper.vllm.wrapper import get_vllm_lm
+
+    VLLM_UNAVAILABLE = False
+except ImportError:
+    pass
+
+
+@pytest.mark.skipif(VLLM_UNAVAILABLE, reason="vLLM not available")
 def test_distilgpt2_vllm():
     prompt = LmPrompt(
         "print('Hello world",

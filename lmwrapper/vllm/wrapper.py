@@ -9,13 +9,11 @@ from lmwrapper.structs import LmChatDialog, LmPrediction, LmPrompt
 
 try:
     from vllm import LLM, SamplingParams
-
-    # assert version.parse(torch.__version__) >= version.parse("2.0")
 except ImportError:
     msg = "Error importing vLLM. Please verify your installation."
-    raise ImportError(
-        msg,
-    )
+    # raise ImportError(
+    #     msg,
+    # )
 
 
 @dataclass
@@ -44,8 +42,7 @@ class vLLMPrediction(LmPrediction):
         self._verify_logprobs()
         if self.prompt.echo:
             return self._log_probs[self._num_prompt_tokens :]
-        else:
-            return self._log_probs
+        return self._log_probs
 
     @property
     def prompt_tokens(self):
@@ -107,7 +104,7 @@ class vLLMPredictor(LmPredictor):
             skip_special_tokens=not prompt.add_special_tokens,
         )
 
-        if prompt.is_dialog():
+        if prompt.is_text_a_chat():
             prompt_token_ids = self._tokenizer.apply_chat_template(
                 prompt.text.as_dicts()
                 if isinstance(prompt.text, LmChatDialog)

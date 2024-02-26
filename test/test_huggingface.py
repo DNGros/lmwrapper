@@ -1,4 +1,3 @@
-# test
 import numpy as np
 import pytest
 import torch
@@ -9,10 +8,9 @@ from lmwrapper.huggingface.predictor import (
     _get_token_offsets,
 )
 from lmwrapper.huggingface.wrapper import get_huggingface_lm
-
 from lmwrapper.prompt_trimming import HfTokenTrimmer
 from lmwrapper.runtime import Runtime
-from lmwrapper.structs import LmPrompt
+from lmwrapper.structs import LmChatDialog, LmChatTurn, LmPrompt
 from lmwrapper.utils import StrEnum
 
 
@@ -26,6 +24,7 @@ class Models(StrEnum):
     CodeLLama_7B_Instruct = "codellama/CodeLlama-7b-Instruct-hf"
     DistilGPT2 = "distilgpt2"
     TinyLLamaChat = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+    BabyLLama = "timinar/baby-llama-58m"
     GPT2 = "gpt2"
 
 
@@ -39,6 +38,7 @@ BIG_CAUSAL_MODELS = {Models.CodeGen2_3_7B}
 BIG_MODELS = BIG_SEQ2SEQ_MODELS | BIG_CAUSAL_MODELS
 ALL_MODELS = SEQ2SEQ_MODELS | CAUSAL_MODELS | BIG_MODELS
 
+
 @pytest.mark.skip()
 def test_tinyllama():
     lm = get_huggingface_lm(
@@ -49,16 +49,18 @@ def test_tinyllama():
     )
 
     prompt = LmPrompt(
-        text=[
-            LmChatTurn(
-                role="system",
-                content="You are a friendly chatbot who always responds in the style of a pirate",
-            ),
-            LmChatTurn(
-                role="user",
-                content="How many helicopters can a human eat in one sitting?",
-            ),
-        ],
+        text=LmChatDialog(
+            [
+                LmChatTurn(
+                    role="system",
+                    content="You are a friendly chatbot who always responds in the style of a pirate",
+                ),
+                LmChatTurn(
+                    role="user",
+                    content="How many helicopters can a human eat in one sitting?",
+                ),
+            ],
+        ),
         # max_tokens=3,
         cache=False,
         temperature=0,
@@ -72,6 +74,37 @@ def test_tinyllama():
     out = lm.predict(prompt)
     print(out)
     assert out.completion_text == "n):\n"
+
+
+# @pytest.mark.skip()
+def test_babyllama():
+    lm = get_huggingface_lm(
+        Models.BabyLLama,
+        runtime=Runtime.PYTORCH,
+        trust_remote_code=True,
+        precision=torch.float16,
+    )
+
+    prompt = LmPrompt(
+        text="""Please list the capitals of the following countries
+
+1. Germany
+2. USA
+3. France
+4. Mexico""",
+        max_tokens=4,
+        cache=False,
+        temperature=0,
+        # add_special_tokens=False,
+        add_bos_token=False,
+        logprobs=1,
+    )
+
+    # Test that the prompt is prepared properly
+
+    out = lm.predict(prompt)
+    print(out)
+    assert out.completion_text == "\n2. Russia"
 
 
 @pytest.mark.slow()
@@ -270,7 +303,7 @@ def test_stop_n_codet5():
     )
     no_logprobs_pred = lm.predict(no_logprobs_prompt)
     assert "\n" in no_logprobs_pred.completion_text
-    assert no_logprobs_pred.completion_tokens[0] not in ["<s>", r"<\s>"]
+    assert no_logprobs_pred.completion_tokens[0] not in {"<s>", r"<\s>"}
     assert len(no_logprobs_pred.completion_tokens) == 49
 
     no_logprobs_n_prompt = LmPrompt(
@@ -289,7 +322,7 @@ def test_stop_n_codet5():
     )
     no_logprobs_n_pred = lm.predict(no_logprobs_n_prompt)
     assert "\n" not in no_logprobs_n_pred.completion_text
-    assert no_logprobs_n_pred.completion_tokens[0] not in ["<s>", r"<\s>"]
+    assert no_logprobs_n_pred.completion_tokens[0] not in {"<s>", r"<\s>"}
     assert len(no_logprobs_n_pred.completion_tokens) == 6  # or 5?
 
     logprobs_prompt = LmPrompt(
@@ -307,7 +340,7 @@ def test_stop_n_codet5():
     )
     logprobs_pred = lm.predict(logprobs_prompt)
     assert "\n" in logprobs_pred.completion_text
-    assert logprobs_pred.completion_tokens[0] not in ["<s>", r"<\s>"]
+    assert logprobs_pred.completion_tokens[0] not in {"<s>", r"<\s>"}
     assert len(logprobs_pred.completion_tokens) == 49
     assert len(logprobs_pred.completion_logprobs) == len(
         logprobs_pred.completion_tokens,
@@ -330,7 +363,7 @@ def test_stop_n_codet5():
     )
     logprobs_n_pred = lm.predict(logprobs_n_prompt)
     assert "\n" not in logprobs_n_pred.completion_text
-    assert logprobs_n_pred.completion_tokens[0] not in ["<s>", r"<\s>"]
+    assert logprobs_n_pred.completion_tokens[0] not in {"<s>", r"<\s>"}
     assert len(logprobs_n_pred.completion_tokens) == 2
     assert len(logprobs_n_pred.completion_logprobs) == len(
         logprobs_n_pred.completion_tokens,
@@ -662,7 +695,6 @@ def test_stop_token_removal():
 def test_degenerate_offsets():
     lm = get_huggingface_lm(Models.DistilGPT2)
     token_ids = [13, 198, 198]
-    text = ".\n\n"
     offsets = _get_token_offsets(lm._tokenizer, token_ids)
     assert offsets == [(0, 1), (1, 2), (2, 3)]
 
@@ -848,7 +880,6 @@ def test_tokenizer_offsets_code_llama():
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
     token_ids = [13, 1678, 736, 921, 334, 29871, 29906, 13, 13, 13, 1753]
-    expected_generated = "\n    return x * 2\n\n\ndef"
     token_vals = [
         "\n",
         "   ",
@@ -869,16 +900,11 @@ def test_tokenizer_offsets_code_llama():
     print("Expected", expected_offsets)
     assert expected_offsets[:3] == [0, 1, 4]
     offsets = _get_token_offsets(tokenizer, token_ids)
-    starts, ends = zip(*offsets, strict=False)
+    starts, _ends = zip(*offsets, strict=False)
     assert list(starts) == expected_offsets
 
 
 def test_offsets_for_removal_prompt():
-    prompt_str = """Please list the capitals of the following countries
-1. Germany
-2. USA
-3. France
-4. Mexico"""
     # get the tokenizer model
     lm = get_huggingface_lm(Models.DistilGPT2, runtime=Runtime.PYTORCH)
     tokenizer = lm._tokenizer

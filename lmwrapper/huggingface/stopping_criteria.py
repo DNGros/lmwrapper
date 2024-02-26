@@ -2,21 +2,25 @@ import torch
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast, StoppingCriteria
 
 
-class _StringStroppingCriteria(StoppingCriteria):
+class StringStoppingCriteria(StoppingCriteria):
     def __init__(
         self,
-        stop_sequences: list[list[str]] = [],
+        stop_sequences: list[list[str]] | None = None,
         tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast = None,
         input_length: int | None = None,
     ):
+        if stop_sequences is None:
+            stop_sequences = []
         super().__init__()
         self.tokenizer = tokenizer
         self.input_length = input_length
-        if not isinstance(stop_sequences, list) or not all(isinstance(stop_sequence, str) for stop_sequence in stop_sequences):
+        if not isinstance(stop_sequences, list) or not all(
+            isinstance(stop_sequence, str) for stop_sequence in stop_sequences
+        ):
             msg = "Stop sequences must be a list of strings."
             raise ValueError(msg)
 
-        if not isinstance(tokenizer, (PreTrainedTokenizerFast, PreTrainedTokenizer)):
+        if not isinstance(tokenizer, PreTrainedTokenizerFast | PreTrainedTokenizer):
             msg = "Tokenizer must be a `PreTrainedTokenizer` or `PreTrainedTokenizerFast`."
 
         self.stop_sequences = stop_sequences
@@ -39,13 +43,16 @@ class _StringStroppingCriteria(StoppingCriteria):
             stop_sequence in decoded_output for stop_sequence in self.stop_sequences
         )
 
-class _TokenIdStoppingCriteria(StoppingCriteria):
+
+class TokenIdStoppingCriteria(StoppingCriteria):
     def __init__(
         self,
-        stop_sequences: list[list[str]] = [],
+        stop_sequences: list[list[str]] | None = None,
         tokenizer: PreTrainedTokenizerFast = None,
         input_length: int | None = None,
     ):
+        if stop_sequences is None:
+            stop_sequences = []
         super().__init__()
         self.tokenizer: PreTrainedTokenizerFast = tokenizer
         self.input_length = input_length
