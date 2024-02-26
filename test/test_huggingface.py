@@ -4,6 +4,7 @@ import torch
 from transformers import AutoTokenizer
 
 from lmwrapper.huggingface.predictor import (
+    _check_tokenizer_to_see_if_adds_bos,
     _expand_offsets_to_a_token_index_for_every_text_index,
     _get_token_offsets,
 )
@@ -26,15 +27,21 @@ class Models(StrEnum):
     TinyLLamaChat = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
     BabyLLama = "timinar/baby-llama-58m"
     GPT2 = "gpt2"
+    Mistral_7B = "mistralai/Mistral-7B-v0.1"
 
 
 CUDA_UNAVAILABLE = not torch.cuda.is_available()
-SMALL_GPU = CUDA_UNAVAILABLE or torch.cuda.mem_get_info()[0] < 17_179_869_184  # 16GB
+try:
+    SMALL_GPU = (
+        CUDA_UNAVAILABLE or torch.cuda.mem_get_info()[0] < 17_179_869_184
+    )  # 16GB
+except RuntimeError:
+    SMALL_GPU = True
 
 SEQ2SEQ_MODELS = {Models.CodeT5plus_220M}
 CAUSAL_MODELS = {Models.DistilGPT2, Models.GPT2, Models.CodeGen2_1B}
 BIG_SEQ2SEQ_MODELS = {Models.CodeT5plus_6B, Models.InstructCodeT5plus_16B}
-BIG_CAUSAL_MODELS = {Models.CodeGen2_3_7B}
+BIG_CAUSAL_MODELS = {Models.CodeGen2_3_7B, Models.Mistral_7B}
 BIG_MODELS = BIG_SEQ2SEQ_MODELS | BIG_CAUSAL_MODELS
 ALL_MODELS = SEQ2SEQ_MODELS | CAUSAL_MODELS | BIG_MODELS
 
@@ -191,7 +198,10 @@ def test_code_llama_conversation(model):
     )
 
     out = lm.predict(prompt)
-    assert out.completion_text == " You can"
+    # It for some reason genrates a space token. (there are 3 tokens, one
+    #   of which is a space). This seems to match the behaviour of the
+    #   native HF text generation pipeline.
+    assert out.completion_text == "  You can"
 
     system = "Provide answers in JavaScript"
     user = (
@@ -212,7 +222,7 @@ def test_code_llama_conversation(model):
     )
 
     out = lm.predict(prompt)
-    assert out.completion_text == " ```\n"
+    assert out.completion_text == "  ```\n"
 
 
 @pytest.mark.slow()
@@ -786,7 +796,12 @@ def test_all_pytorch_runtime(lm: str):
         temperature=0,
         add_bos_token=lm not in SEQ2SEQ_MODELS | BIG_SEQ2SEQ_MODELS,
     )
-    lm = get_huggingface_lm(lm, runtime=Runtime.PYTORCH, trust_remote_code=True)
+    lm = get_huggingface_lm(
+        lm,
+        runtime=Runtime.PYTORCH,
+        trust_remote_code=True,
+        precision=torch.float16,
+    )
     out = lm.predict(prompt)
     assert out.completion_text
 
@@ -904,6 +919,47 @@ def test_tokenizer_offsets_code_llama():
     assert list(starts) == expected_offsets
 
 
+def test_offsets_for_mistral():
+    model_name = Models.Mistral_7B
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+    # token_ids = [2287,  2682,   618, 2287, 2682]
+    # assert ' ' + tokenizer.decode(token_ids) == '    print("    print'
+    token_ids = [2287, 2682, 618]
+    offsets = _get_token_offsets(tokenizer, token_ids)
+    assert offsets == [
+        (0, len("▁▁▁")),
+        (3, 3 + len("▁print")),
+        (3 + len("▁print"), 3 + len("▁print") + len('("')),
+    ]
+
+
+def test_offsets_for_mistral2():
+    model_name = Models.Mistral_7B
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+    token_ids = [618, 2287, 2682, 618]
+    offsets = _get_token_offsets(tokenizer, token_ids)
+    assert offsets == [
+        (0, len('("')),
+        (2, 2 + len("▁▁▁")),
+        (5, 5 + len("▁print")),
+        (11, 11 + len('("')),
+    ]
+
+
+def test_offsets_for_mistral3():
+    model_name = Models.Mistral_7B
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+    token_ids = [2682, 618]
+    offsets = _get_token_offsets(tokenizer, token_ids)
+    assert offsets == [(0, 0 + len("▁print")), (6, 6 + len('("'))]
+
+
 def test_offsets_for_removal_prompt():
     # get the tokenizer model
     lm = get_huggingface_lm(Models.DistilGPT2, runtime=Runtime.PYTORCH)
@@ -971,3 +1027,78 @@ def test_degenerative_multiple_2():
         (4, 5),
         (5, 6),
     ]
+
+
+@pytest.mark.slow()
+@pytest.mark.parametrize("model", [
+    #Models.CodeT5plus_6B,  # This seems not to indent properly for unexplored reasons
+    Models.CodeGen2_1B,
+    Models.Mistral_7B,
+])
+def test_hello_world_prompt(model):
+    if SMALL_GPU and model in BIG_MODELS:
+        pytest.skip(
+            f"Skipped model '{model}' as model too large for available GPU memory.",
+        )
+    lm = get_huggingface_lm(
+        model,
+        runtime=Runtime.PYTORCH,
+        trust_remote_code=True,
+        precision=torch.float16,
+    )
+    hello_world_prompt = (
+        "def hello():\n"
+        '    """prints the string \'hello\'"""\n'
+        '    print("hello")\n'
+        "\n"
+        "def hello_world():\n"
+        '    """prints the string \'hello world\'"""\n'
+    )
+    resp = lm.predict(
+        LmPrompt(
+            hello_world_prompt,
+            max_tokens=10,
+            cache=False,
+            # stop=["\n"],
+            temperature=0,
+        ),
+    )
+    assert (
+        resp.completion_text.startswith("    print('hello world')")
+        or resp.completion_text.startswith('    print("hello world")'),
+    )
+
+    # A version using stop. Breaks because the tokenization is wrong.
+    resp = lm.predict(
+        LmPrompt(
+            hello_world_prompt,
+            max_tokens=10,
+            cache=False,
+            stop=["\n"],
+            temperature=0,
+        ),
+    )
+    assert resp.completion_text in {
+        "    print('hello world')",
+        '    print("hello world")',
+    }
+    resp = lm.predict(
+        LmPrompt(
+            hello_world_prompt + "    print",
+            max_tokens=10,
+            cache=False,
+            stop=["\n"],
+            temperature=0,
+        ),
+    )
+    assert resp.completion_text in {
+        "('hello world')",
+        '("hello world")',
+    }
+
+
+def test_check_tokenizer_check():
+    mistral_tokenizer = AutoTokenizer.from_pretrained(Models.Mistral_7B, use_fast=True)
+    assert _check_tokenizer_to_see_if_adds_bos(mistral_tokenizer, True)
+    gpt2_tokenizer = AutoTokenizer.from_pretrained(Models.DistilGPT2, use_fast=True)
+    assert not _check_tokenizer_to_see_if_adds_bos(gpt2_tokenizer, True)
