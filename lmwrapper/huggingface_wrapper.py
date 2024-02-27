@@ -1,2 +1,0 @@
-# fmt:off
-# fmt:on
