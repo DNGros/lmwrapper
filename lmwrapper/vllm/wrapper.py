@@ -186,6 +186,7 @@ class vLLMPredictor(LmPredictor):
             output_tokens = self.remove_special_chars_from_tokens(
                 self._llm.get_tokenizer().convert_ids_to_tokens(tokens)
             )
+
             return vLLMPrediction(
                 completion_text=completion.outputs[0].text,
                 prompt=prompt,

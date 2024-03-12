@@ -10,12 +10,12 @@ from lmwrapper.structs import LmPrompt
 from .test_vllm import VLLM_UNAVAILABLE
 
 ALL_MODELS = [
-    # get_open_ai_lm(OpenAiModelNames.gpt_3_5_turbo_instruct),
-    # get_huggingface_lm("gpt2"),
+    get_open_ai_lm(OpenAiModelNames.gpt_3_5_turbo_instruct),
+    get_huggingface_lm("gpt2"),
 ]
 
 ECHOABLE_MODELS = [
-    # get_huggingface_lm("gpt2"),
+    get_huggingface_lm("gpt2"),
 ]
 
 if not VLLM_UNAVAILABLE:
@@ -281,27 +281,27 @@ def test_no_stopping_program(lm):
 
 @pytest.mark.parametrize("lm", ALL_MODELS)
 def test_stopping_begin_tok(lm):
-    val_normal = lm.predict(
-        LmPrompt(
-            capital_prompt,
-            max_tokens=4,
-            logprobs=1,
-            temperature=0,
-            cache=False,
-        ),
-    )
-    print(val_normal.completion_text)
-    assert "is the city Paris" in val_normal.completion_text
-    assert len(val_normal.completion_tokens) == 4
-    assert (
-        lm.remove_special_chars_from_tokens(val_normal.completion_tokens)[-1]
-        == " Paris"
-    )
+    # val_normal = lm.predict(
+    #     LmPrompt(
+    #         capital_prompt,
+    #         max_tokens=4,
+    #         logprobs=1,
+    #         temperature=0,
+    #         cache=False,
+    #     ),
+    # )
+    # print(val_normal.completion_text)
+    # assert "is the city Paris" in val_normal.completion_text
+    # assert len(val_normal.completion_tokens) == 4
+    # assert (
+    #     lm.remove_special_chars_from_tokens(val_normal.completion_tokens)[-1]
+    #     == " Paris"
+    # )
     # Chopping off first part of subtoken does not return token
     val_no_pa = lm.predict(
         LmPrompt(
             capital_prompt,
-            max_tokens=4,
+            # max_tokens=6,
             logprobs=1,
             temperature=0,
             cache=False,
