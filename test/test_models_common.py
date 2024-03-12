@@ -5,17 +5,24 @@ import pytest
 
 from lmwrapper.huggingface.wrapper import get_huggingface_lm
 from lmwrapper.openai.wrapper import OpenAiModelNames, get_open_ai_lm
+from lmwrapper.vllm import get_vllm_lm
 from lmwrapper.structs import LmPrompt
+from .test_vllm import VLLM_UNAVAILABLE
 
 ALL_MODELS = [
-    get_open_ai_lm(OpenAiModelNames.gpt_3_5_turbo_instruct),
-    get_huggingface_lm("gpt2"),
+    # get_open_ai_lm(OpenAiModelNames.gpt_3_5_turbo_instruct),
+    # get_huggingface_lm("gpt2"),
 ]
-
 
 ECHOABLE_MODELS = [
-    get_huggingface_lm("gpt2"),
+    # get_huggingface_lm("gpt2"),
 ]
+
+if not VLLM_UNAVAILABLE:
+    ALL_MODELS.append(get_vllm_lm("gpt2"))
+    ECHOABLE_MODELS.append(get_vllm_lm("gpt2"))
+
+
 
 
 @pytest.mark.parametrize("lm", ALL_MODELS)

@@ -114,7 +114,6 @@ class ExLlamaPredictor(LmPredictor):
             n=prompt.num_completions,
             presence_penalty=prompt.presence_penalty,
             frequency_penalty=prompt.frequency_penalty,
-            repetition_penalty=prompt.repetition_penalty,
             temperature=prompt.temperature,
             top_p=prompt.top_p,
             top_k=prompt.top_k,
@@ -131,7 +130,6 @@ class ExLlamaPredictor(LmPredictor):
         settings.top_k = prompt.top_k
         settings.token_frequency_penalty = prompt.frequency_penalty
         settings.token_presence_penalty = prompt.presence_penalty
-        settings.token_repetition_penalty = prompt.repetition_penalty
         settings.disallow_tokens(self._tokenizer, [self._tokenizer.eos_token_id])
 
         self._llm.set_stop_conditions([*prompt.stop, self._tokenizer.eos_token_id])

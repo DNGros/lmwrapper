@@ -9,8 +9,8 @@ try:
     from lmwrapper.vllm.wrapper import get_vllm_lm
 
     VLLM_UNAVAILABLE = False
-except ImportError:
-    pass
+except ImportError as e:
+    print(e)
 
 
 @pytest.mark.skipif(VLLM_UNAVAILABLE, reason="vLLM not available")
@@ -20,7 +20,34 @@ def test_distilgpt2_vllm():
         max_tokens=15,
         cache=False,
         temperature=0,
+        logprobs=1,
     )
-    lm = get_vllm_lm("distilgpt2")
+    lm = get_vllm_lm("distilgpt2", tensor_parallel_size=4)
+    out = lm.predict(prompt)
+    assert out.completion_text
+
+
+CODE_LLAMAS = [
+    "codellama/CodeLlama-7b-hf",
+    "codellama/CodeLlama-7b-Instruct-hf",
+    "codellama/CodeLlama-13b-hf",
+    "codellama/CodeLlama-13b-Instruct-hf",
+    "codellama/CodeLlama-34b-hf",
+    "codellama/CodeLlama-34b-Instruct-hf",
+    "codellama/CodeLlama-70b-hf",
+    "codellama/CodeLlama-70b-Instruct-hf",
+]
+
+@pytest.mark.skipif(VLLM_UNAVAILABLE, reason="vLLM not available")
+@pytest.mark.parametrize("lm", CODE_LLAMAS)
+def test_big_models_vllm(lm):
+    prompt = LmPrompt(
+        "print('Hello world",
+        max_tokens=15,
+        cache=False,
+        temperature=0,
+        logprobs=1,
+    )
+    lm = get_vllm_lm(lm, tensor_parallel_size=4)
     out = lm.predict(prompt)
     assert out.completion_text

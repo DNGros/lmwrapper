@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
 
@@ -9,7 +10,7 @@ class HuggingFacePrediction(LmPrediction):
     _prompt_encoding: Any
     _tokens: Any
     _log_probs: Any
-    _logprobs_dict: dict
+    _logprobs_dict: list
     _num_prompt_tokens: int
     _completion_with_special_tok: str
 
