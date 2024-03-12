@@ -915,7 +915,7 @@ def test_tokenizer_offsets_code_llama():
     print("Expected", expected_offsets)
     assert expected_offsets[:3] == [0, 1, 4]
     offsets = _get_token_offsets(tokenizer, token_ids)
-    starts, _ends = zip(*offsets, strict=False)
+    starts, ends = zip(*offsets, strict=False)
     assert list(starts) == expected_offsets
 
 
