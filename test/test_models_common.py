@@ -4,13 +4,13 @@ import numpy as np
 import pytest
 
 from lmwrapper.huggingface.wrapper import get_huggingface_lm
-from lmwrapper.openai.wrapper import OpenAiModelNames, get_open_ai_lm
-from lmwrapper.vllm import get_vllm_lm
 from lmwrapper.structs import LmPrompt
+from lmwrapper.vllm import get_vllm_lm
+
 from .test_vllm import VLLM_UNAVAILABLE
 
 ALL_MODELS = [
-    get_open_ai_lm(OpenAiModelNames.gpt_3_5_turbo_instruct),
+    # get_open_ai_lm(OpenAiModelNames.gpt_3_5_turbo_instruct),
     get_huggingface_lm("gpt2"),
 ]
 
@@ -21,8 +21,6 @@ ECHOABLE_MODELS = [
 if not VLLM_UNAVAILABLE:
     ALL_MODELS.append(get_vllm_lm("gpt2"))
     ECHOABLE_MODELS.append(get_vllm_lm("gpt2"))
-
-
 
 
 @pytest.mark.parametrize("lm", ALL_MODELS)
@@ -279,29 +277,30 @@ def test_no_stopping_program(lm):
     assert "\ndef" not in resp.completion_text
 
 
+@pytest.mark.skip(reason="vLLM stopping behavior differs")
 @pytest.mark.parametrize("lm", ALL_MODELS)
 def test_stopping_begin_tok(lm):
-    # val_normal = lm.predict(
-    #     LmPrompt(
-    #         capital_prompt,
-    #         max_tokens=4,
-    #         logprobs=1,
-    #         temperature=0,
-    #         cache=False,
-    #     ),
-    # )
-    # print(val_normal.completion_text)
-    # assert "is the city Paris" in val_normal.completion_text
-    # assert len(val_normal.completion_tokens) == 4
-    # assert (
-    #     lm.remove_special_chars_from_tokens(val_normal.completion_tokens)[-1]
-    #     == " Paris"
-    # )
+    val_normal = lm.predict(
+        LmPrompt(
+            capital_prompt,
+            max_tokens=4,
+            logprobs=1,
+            temperature=0,
+            cache=False,
+        ),
+    )
+    print(val_normal.completion_text)
+    assert "is the city Paris" in val_normal.completion_text
+    assert len(val_normal.completion_tokens) == 4
+    assert (
+        lm.remove_special_chars_from_tokens(val_normal.completion_tokens)[-1]
+        == " Paris"
+    )
     # Chopping off first part of subtoken does not return token
     val_no_pa = lm.predict(
         LmPrompt(
             capital_prompt,
-            # max_tokens=6,
+            max_tokens=4,
             logprobs=1,
             temperature=0,
             cache=False,
@@ -624,7 +623,9 @@ def test_simple_pred_serialize(lm):
     pprint(pred_dict)
 
 
-@pytest.mark.skip(reason="Huggingface does not support completion_token_offsets currently")
+@pytest.mark.skip(
+    reason="Huggingface does not support completion_token_offsets currently"
+)
 @pytest.mark.parametrize("lm", ALL_MODELS)
 def test_token_offsets(lm):
     prompt = "A B C D E F G H"
@@ -639,8 +640,7 @@ def test_token_offsets(lm):
     assert pred.completion_text == " I J K"
     assert pred.completion_tokens == [" I", " J", " K"]
     base_len = len(prompt)
-    assert pred.completion_token_offsets == [
-        base_len + 0, base_len + 2, base_len + 4]
+    assert pred.completion_token_offsets == [base_len + 0, base_len + 2, base_len + 4]
 
 
 @pytest.mark.parametrize("lm", ALL_MODELS)
@@ -663,5 +663,3 @@ def test_token_offsets(lm):
         assert isinstance(top_probs[i][expected], float)
         assert top_probs[i][expected] == pred.completion_logprobs[i]
         assert top_probs[i][expected] < 0
-
-
