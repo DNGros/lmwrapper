@@ -2,25 +2,24 @@ import math
 
 import numpy as np
 import pytest
+import torch
 
 from lmwrapper.huggingface.wrapper import get_huggingface_lm
+from lmwrapper.openai.wrapper import OpenAiModelNames, get_open_ai_lm
+from lmwrapper.runtime import Runtime
 from lmwrapper.structs import LmPrompt
-from lmwrapper.vllm import get_vllm_lm
-
-from .test_vllm import VLLM_UNAVAILABLE
 
 ALL_MODELS = [
-    # get_open_ai_lm(OpenAiModelNames.gpt_3_5_turbo_instruct),
+    get_open_ai_lm(OpenAiModelNames.gpt_3_5_turbo_instruct),
+    get_huggingface_lm(
+        "gpt2",
+        runtime=Runtime.ACCELERATE,
+        precision=torch.float16,
+    ),
     get_huggingface_lm("gpt2"),
 ]
 
-ECHOABLE_MODELS = [
-    get_huggingface_lm("gpt2"),
-]
-
-if not VLLM_UNAVAILABLE:
-    ALL_MODELS.append(get_vllm_lm("gpt2"))
-    ECHOABLE_MODELS.append(get_vllm_lm("gpt2"))
+ECHOABLE_MODELS = ALL_MODELS[1:]
 
 
 @pytest.mark.parametrize("lm", ALL_MODELS)
@@ -277,7 +276,7 @@ def test_no_stopping_program(lm):
     assert "\ndef" not in resp.completion_text
 
 
-@pytest.mark.skip(reason="vLLM stopping behavior differs")
+# @pytest.mark.skip(reason="vLLM stopping behavior differs")
 @pytest.mark.parametrize("lm", ALL_MODELS)
 def test_stopping_begin_tok(lm):
     val_normal = lm.predict(

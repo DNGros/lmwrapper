@@ -5,7 +5,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING
 
 import torch
-from transformers import GenerationConfig, PreTrainedModel, PreTrainedTokenizerFast
+from transformers import GenerationConfig, PreTrainedModel, PreTrainedTokenizerFast, GPT2LMHeadModel
 from transformers.utils.generic import TensorType
 
 from lmwrapper.abstract_predictor import LmPredictor
@@ -162,15 +162,21 @@ class HuggingFacePredictor(LmPredictor):
 
         logging.debug("Pre moving encoded tokens")
         log_cuda_mem()
-        if self.runtime != Runtime.ACCELERATE:
-            encoded_input = encoded_input.to(
-                self._device,
-            )  # Move to device
+
+        # All runtimes require input tensors to be on same device as model,
+        # so we must manually move the tensor. Currently, accelerate does not
+        # mandate it and usually takes care of moving automatically,
+        # however an edge case resulting from the GPT2 implementation
+        # requires us to manually move the input tensors to
+        # the same device as the input layer (wte+wpe) is on
+        if self.runtime == Runtime.ACCELERATE:
+            device = self._model.transformer.wpe.weight.device if isinstance(self._model, GPT2LMHeadModel) else self._device
+
+        encoded_input = encoded_input.to(device)
+
         logging.debug("Post moving encoded tokens")
         log_cuda_mem()
-        # ONNX models themselves cannot be moved to a device
-        # but their input tensors must be moved to GPU
-        # Similarly, Accelerate takes care of moving tensors
+
         logging.debug("Pre model moving")
         log_cuda_mem()
 

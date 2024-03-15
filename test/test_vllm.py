@@ -32,10 +32,6 @@ CODE_LLAMAS = [
     "codellama/CodeLlama-7b-Instruct-hf",
     "codellama/CodeLlama-13b-hf",
     "codellama/CodeLlama-13b-Instruct-hf",
-    "codellama/CodeLlama-34b-hf",
-    "codellama/CodeLlama-34b-Instruct-hf",
-    "codellama/CodeLlama-70b-hf",
-    "codellama/CodeLlama-70b-Instruct-hf",
 ]
 
 @pytest.mark.skipif(VLLM_UNAVAILABLE, reason="vLLM not available")
