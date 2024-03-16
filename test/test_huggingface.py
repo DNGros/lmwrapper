@@ -46,11 +46,10 @@ BIG_MODELS = BIG_SEQ2SEQ_MODELS | BIG_CAUSAL_MODELS
 ALL_MODELS = SEQ2SEQ_MODELS | CAUSAL_MODELS | BIG_MODELS
 
 
-@pytest.mark.skip()
 def test_tinyllama():
     lm = get_huggingface_lm(
         Models.TinyLLamaChat,
-        runtime=Runtime.ACCELERATE,
+        runtime=Runtime.PYTORCH,
         trust_remote_code=True,
         precision=torch.float16,
     )
@@ -83,7 +82,6 @@ def test_tinyllama():
     assert out.completion_text == "n):\n"
 
 
-# @pytest.mark.skip()
 def test_babyllama():
     lm = get_huggingface_lm(
         Models.BabyLLama,

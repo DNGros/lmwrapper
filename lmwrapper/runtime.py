@@ -21,6 +21,3 @@ class Runtime(Enum):
 
     BETTER_TRANSFORMER = 6
     """Use BetterTransformer as the backend runtime."""
-
-    VLLM = 7
-    """Use vLLM as backend."""

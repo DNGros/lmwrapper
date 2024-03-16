@@ -22,7 +22,7 @@ def test_distilgpt2_vllm():
         temperature=0,
         logprobs=1,
     )
-    lm = get_vllm_lm("distilgpt2", tensor_parallel_size=4)
+    lm = get_vllm_lm("distilgpt2")
     out = lm.predict(prompt)
     assert out.completion_text
 
@@ -44,6 +44,6 @@ def test_big_models_vllm(lm):
         temperature=0,
         logprobs=1,
     )
-    lm = get_vllm_lm(lm, tensor_parallel_size=4)
+    lm = get_vllm_lm(lm)
     out = lm.predict(prompt)
     assert out.completion_text
