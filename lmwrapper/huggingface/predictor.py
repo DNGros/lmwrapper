@@ -1,11 +1,17 @@
 import inspect
 import logging
+from collections import OrderedDict
 from collections.abc import Sequence
 from functools import cached_property
 from typing import TYPE_CHECKING
 
 import torch
-from transformers import GenerationConfig, PreTrainedModel, PreTrainedTokenizerFast, GPT2LMHeadModel
+from transformers import (
+    GenerationConfig,
+    GPT2LMHeadModel,
+    PreTrainedModel,
+    PreTrainedTokenizerFast,
+)
 from transformers.utils.generic import TensorType
 
 from lmwrapper.abstract_predictor import LmPredictor
@@ -170,7 +176,11 @@ class HuggingFacePredictor(LmPredictor):
         # requires us to manually move the input tensors to
         # the same device as the input layer (wte+wpe) is on
         if self.runtime == Runtime.ACCELERATE:
-            device = self._model.transformer.wpe.weight.device if isinstance(self._model, GPT2LMHeadModel) else self._device
+            device = (
+                self._model.transformer.wpe.weight.device
+                if isinstance(self._model, GPT2LMHeadModel)
+                else self._device
+            )
 
         encoded_input = encoded_input.to(device)
 
@@ -248,6 +258,7 @@ class HuggingFacePredictor(LmPredictor):
             max_new_tokens=max_new_tokens,
             return_dict_in_generate=True,
             output_scores=need_log_prob,
+            output_logits=True,
             **optional_generation_kwargs,
         )
 
@@ -301,6 +312,9 @@ class HuggingFacePredictor(LmPredictor):
             ]
 
         with torch.inference_mode():
+            # if prompt.echo:
+            # raw_forward = self._model(**encoded_input)
+            # raw_logits = raw_forward.logits
             generation_output: GenerateOutput = self._model.generate(
                 **encoded_input,
                 generation_config=gen_config,
@@ -313,14 +327,62 @@ class HuggingFacePredictor(LmPredictor):
         if patch_model_forward:
             self._model.forward = old_forward
 
-        model_output_sequence = generation_output.sequences[
-            0
-        ].detach()  # we will not mutate this one
+        # we will not mutate this one
+        model_output_sequence = generation_output.sequences[0].detach()
 
-        output_sequence = model_output_sequence.clone()  # we will mutate this one
-
+        # cut output sequence to exclude prompt
         generated_sequence = model_output_sequence[input_length:]
 
+        # we will mutate this one
+        output_sequence = model_output_sequence.clone()
+
+        # calculate top k tokens for logprobs
+
+        if prompt.logprobs > 0:
+            # generation_output.logits is a tuple of tensors
+            # stack the logits and squeeze to produce (seq_len, vocab_size) tensor
+            logits = torch.stack(list(generation_output.logits), dim=0).squeeze()
+            # if prompt.echo:
+            # logits = torch.cat((raw_logits.squeeze(), output_logits), dim=0)
+
+            # softmax for each position
+            softmax = torch.nn.functional.log_softmax(logits, dim=1)
+
+            # get top k logits for each position
+            model_topk_tokens = torch.topk(softmax, k=prompt.logprobs)
+
+            # move the indices (token ids) and probabilities to CPU
+            model_topk_indices = model_topk_tokens.indices.detach().cpu()
+            model_topk_values = model_topk_tokens.values.detach().cpu()
+
+            # list to store OrderedDicts
+            topk_tokens = []
+
+            # list to store top1 logprobs
+            alt_logprobs = []
+
+            # iterate over each position
+            for token_indices, token_probabilities in zip(
+                model_topk_indices, model_topk_values, strict=True
+            ):
+                # decode top tokens
+                decoded = [self._tokenizer.decode(t) for t in token_indices]
+
+                # produce an OrderedDict of token:logprob
+                topk_toks_inner = OrderedDict(
+                    zip(decoded, token_probabilities, strict=True)
+                )
+
+                # append highest prob to top1 logprobs
+                alt_logprobs.append(token_probabilities[0])
+
+                # append OrderedDict to list of top tokens
+                topk_tokens.append(topk_toks_inner)
+
+            # convert list of scalar tensors to an actual tensor (seq_len,)
+            alt_logprobs = torch.Tensor(alt_logprobs)
+
+        # begin stop token handling
         stop_token_idx_output = None
         stop_token_idx_generated = None
 
@@ -419,13 +481,23 @@ class HuggingFacePredictor(LmPredictor):
 
                 assert len(output_sequence) == len(logprobs)
             else:
+                # compute_transition_scores was built primarily for beam search!
+                # when doing beam search, or anything other than greedy decoding,
+                # your transition scores are no longer simply the top logits
+                # The library method handles the logic for that, although
+                # we do not need it as we generally do greedy decoding.
                 output_logprobs = self._model.compute_transition_scores(
                     generation_output.sequences,
                     generation_output.scores,
                     normalize_logits=True,
-                )[0]
+                )
+
+                output_logprobs = output_logprobs[0]
 
                 logprobs = output_logprobs.detach().cpu()
+
+                assert torch.allclose(logprobs, alt_logprobs, atol=0.001)
+
                 # Free memory
                 del output_logprobs
 
@@ -533,11 +605,11 @@ class HuggingFacePredictor(LmPredictor):
     def _does_this_tokenizer_seem_add_a_bos(self, add_special_tokens) -> bool:
         if self._tokenizer_already_adds_bos.get(add_special_tokens, None) is not None:
             return self._tokenizer_already_adds_bos[add_special_tokens]
-        self._tokenizer_already_adds_bos[
-            add_special_tokens
-        ] = _check_tokenizer_to_see_if_adds_bos(
-            self._tokenizer,
-            add_special_tokens,
+        self._tokenizer_already_adds_bos[add_special_tokens] = (
+            _check_tokenizer_to_see_if_adds_bos(
+                self._tokenizer,
+                add_special_tokens,
+            )
         )
         return self._tokenizer_already_adds_bos[add_special_tokens]
 

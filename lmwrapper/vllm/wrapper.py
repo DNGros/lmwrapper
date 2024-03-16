@@ -20,10 +20,7 @@ try:
     from vllm.utils import Counter
     from vllm.engine.arg_utils import EngineArgs
 except ImportError:
-    msg = "Error importing vLLM. Please verify your installation."
-    raise ImportError(
-        msg,
-    )
+   print("Error importing vLLM. Please verify your installation.")
 
 
 # Patch LLMEngine to change stop sequence behavior

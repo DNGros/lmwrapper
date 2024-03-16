@@ -517,6 +517,7 @@ def test_stop_token_removal():
         max_tokens=15,
         cache=False,
         temperature=0,
+        logprobs=1,
     )
     out = lm.predict(prompt)
     assert "Italy" in out.completion_text

@@ -6,7 +6,6 @@ import torch
 
 from lmwrapper.huggingface.wrapper import get_huggingface_lm
 from lmwrapper.openai.wrapper import OpenAiModelNames, get_open_ai_lm
-from lmwrapper.vllm.wrapper import get_vllm_lm
 from lmwrapper.runtime import Runtime
 from lmwrapper.structs import LmPrompt
 from test.test_vllm import VLLM_UNAVAILABLE
@@ -22,6 +21,7 @@ ALL_MODELS = [
 ]
 
 if not VLLM_UNAVAILABLE:
+    from lmwrapper.vllm.wrapper import get_vllm_lm
     ALL_MODELS.append(get_vllm_lm("gpt2"))
 
 ECHOABLE_MODELS = ALL_MODELS[1:]
