@@ -67,7 +67,7 @@ def test_tinyllama():
                 ),
             ],
         ),
-        # max_tokens=3,
+        max_tokens=3,
         cache=False,
         temperature=0,
         # add_special_tokens=False,
@@ -79,7 +79,7 @@ def test_tinyllama():
 
     out = lm.predict(prompt)
     print(out)
-    assert out.completion_text == "n):\n"
+    assert out.completion_text == "There is no"
 
 
 def test_babyllama():
@@ -248,8 +248,8 @@ def test_trim_start():
 @pytest.mark.slow()
 def test_logprobs_codegen2():
     # model = Models.CodeGen2_1B
-    # model = Models.CodeGen2_3_7B
-    model = "Salesforce/codegen2-16B"
+    model = Models.CodeGen2_3_7B
+    # model = "Salesforce/codegen2-16B"
     lm = get_huggingface_lm(
         model,
         # Models.CodeGen2_3_7B,
@@ -267,6 +267,7 @@ def test_logprobs_codegen2():
     outa = lm.predict(prompt)
     logprobs_a = np.array(outa.completion_logprobs)
     del outa
+    del lm._model
     del lm
     import gc
 
@@ -783,7 +784,7 @@ def test_distilgpt2_pytorch_runtime():
 @pytest.mark.slow()
 @pytest.mark.parametrize("lm", ALL_MODELS)
 def test_all_pytorch_runtime(lm: str):
-    if SMALL_GPU and lm in BIG_MODELS:
+    if lm == Models.InstructCodeT5plus_16B or (SMALL_GPU and lm in BIG_MODELS):
         pytest.skip(
             f"Skipped model '{lm}' as model too large for available GPU memory.",
         )
@@ -794,14 +795,22 @@ def test_all_pytorch_runtime(lm: str):
         temperature=0,
         add_bos_token=lm not in SEQ2SEQ_MODELS | BIG_SEQ2SEQ_MODELS,
     )
-    lm = get_huggingface_lm(
+
+    hf_lm = get_huggingface_lm(
         lm,
         runtime=Runtime.PYTORCH,
         trust_remote_code=True,
         precision=torch.float16,
     )
-    out = lm.predict(prompt)
+    out = hf_lm.predict(prompt)
     assert out.completion_text
+    del out
+    del hf_lm._model
+    del hf_lm
+    import gc
+
+    gc.collect()
+    torch.cuda.empty_cache()
 
 
 @pytest.mark.slow()

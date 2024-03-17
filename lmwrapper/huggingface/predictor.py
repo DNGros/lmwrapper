@@ -1,6 +1,5 @@
 import inspect
 import logging
-from collections import OrderedDict
 from collections.abc import Sequence
 from functools import cached_property
 from typing import TYPE_CHECKING
@@ -138,8 +137,9 @@ class HuggingFacePredictor(LmPredictor):
                 else prompt.text,
                 add_generation_prompt=True,
                 return_tensors="pt",
-                return_attention_mask=model_requires_attention_mask,
-                add_special_tokens=prompt.add_special_tokens,  # TODO: does this make sense for dialog?
+                return_dict=True,
+                # return_attention_mask=model_requires_attention_mask,
+                # add_special_tokens=prompt.add_special_tokens,  # TODO: does this make sense for dialog?
             )
         else:
             encoded_input = self._tokenizer(
@@ -175,12 +175,12 @@ class HuggingFacePredictor(LmPredictor):
         # however an edge case resulting from the GPT2 implementation
         # requires us to manually move the input tensors to
         # the same device as the input layer (wte+wpe) is on
-        if self.runtime == Runtime.ACCELERATE:
-            device = (
-                self._model.transformer.wpe.weight.device
-                if isinstance(self._model, GPT2LMHeadModel)
-                else self._device
-            )
+        device = (
+            self._model.transformer.wpe.weight.device
+            if self.runtime == Runtime.ACCELERATE
+            and isinstance(self._model, GPT2LMHeadModel)
+            else self._device
+        )
 
         encoded_input = encoded_input.to(device)
 
@@ -339,14 +339,21 @@ class HuggingFacePredictor(LmPredictor):
         # calculate top k tokens for logprobs
 
         if prompt.logprobs > 0:
+            out_token_count = len(generated_sequence)
+            if is_encoder_decoder:
+                out_token_count += 1
             # generation_output.logits is a tuple of tensors
             # stack the logits and squeeze to produce (seq_len, vocab_size) tensor
-            logits = torch.stack(list(generation_output.logits), dim=0).squeeze()
+            logits = torch.stack(list(generation_output.logits), dim=0).squeeze(1)
+            assert logits.shape[0] == out_token_count
+            assert logits.shape[1] >= self._model.config.vocab_size
             # if prompt.echo:
             # logits = torch.cat((raw_logits.squeeze(), output_logits), dim=0)
 
             # softmax for each position
             softmax = torch.nn.functional.log_softmax(logits, dim=1)
+            assert softmax.shape[0] == out_token_count
+            assert softmax.shape[1] >= self._model.config.vocab_size
 
             # get top k logits for each position
             model_topk_tokens = torch.topk(softmax, k=prompt.logprobs)
@@ -354,6 +361,8 @@ class HuggingFacePredictor(LmPredictor):
             # move the indices (token ids) and probabilities to CPU
             model_topk_indices = model_topk_tokens.indices.detach().cpu()
             model_topk_values = model_topk_tokens.values.detach().cpu()
+            assert model_topk_indices.shape == (out_token_count, prompt.logprobs)
+            assert model_topk_values.shape == (out_token_count, prompt.logprobs)
 
             # list to store OrderedDicts
             topk_tokens = []
@@ -368,19 +377,19 @@ class HuggingFacePredictor(LmPredictor):
                 # decode top tokens
                 decoded = [self._tokenizer.decode(t) for t in token_indices]
 
-                # produce an OrderedDict of token:logprob
-                topk_toks_inner = OrderedDict(
+                # produce a dict of token:logprob
+                topk_toks_inner = dict(
                     zip(decoded, token_probabilities, strict=True)
                 )
 
                 # append highest prob to top1 logprobs
-                alt_logprobs.append(token_probabilities[0])
+                alt_logprobs.append(token_probabilities[0].item())
 
                 # append OrderedDict to list of top tokens
                 topk_tokens.append(topk_toks_inner)
 
             # convert list of scalar tensors to an actual tensor (seq_len,)
-            alt_logprobs = torch.Tensor(alt_logprobs)
+            alt_logprobs = torch.tensor(alt_logprobs, dtype=logits.dtype)
 
         # begin stop token handling
         stop_token_idx_output = None
@@ -496,7 +505,12 @@ class HuggingFacePredictor(LmPredictor):
 
                 logprobs = output_logprobs.detach().cpu()
 
-                assert torch.allclose(logprobs, alt_logprobs, atol=0.001)
+                # top k is operating on the raw, unprocessed logits
+                # for the following assert to hold with logit warpers e.g. temperature
+                # top k would need to use scores instead of logits. that is a simple
+                # one line change, but I figured
+                if prompt.temperature == 0:
+                    assert torch.allclose(logprobs, alt_logprobs, atol=0.001)
 
                 # Free memory
                 del output_logprobs

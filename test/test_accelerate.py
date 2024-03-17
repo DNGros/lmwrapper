@@ -52,10 +52,9 @@ def test_tinyllama():
                 ),
             ],
         ),
-        # max_tokens=3,
+        max_tokens=3,
         cache=False,
         temperature=0,
-        # add_special_tokens=False,
         add_bos_token=False,
         logprobs=1,
     )
@@ -64,7 +63,7 @@ def test_tinyllama():
 
     out = lm.predict(prompt)
     print(out)
-    assert out.completion_text == "n):\n"
+    assert out.completion_text == "There is no"
 
 
 def test_babyllama():
