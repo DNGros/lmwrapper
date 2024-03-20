@@ -38,7 +38,7 @@ hf-dev = [
     "torch>=2.2.1",
     "transformers @ git+https://github.com/huggingface/transformers",
 ]
-accelerate = ["accelerate~=0.23.0"]
+accelerate = ["accelerate~=0.28.0"]
 xformers = ["xformers~=0.0.24"]
 flash-attn = ["flash_attn~=2.5.5"]
 ort = ["optimum[onnxruntime]~=1.13.2"]

@@ -11,6 +11,7 @@ try:
     VLLM_UNAVAILABLE = False
 except ImportError as e:
     print(e)
+    print("Skipping vLLM tests")
 
 
 @pytest.mark.skipif(VLLM_UNAVAILABLE, reason="vLLM not available")
