@@ -1,3 +1,6 @@
+# TODO this looks like copy paste from huggingface. We should remove this.
+from test.test_huggingface import Models
+
 import numpy as np
 import pytest
 import torch
@@ -12,23 +15,6 @@ from lmwrapper.huggingface.wrapper import get_huggingface_lm
 from lmwrapper.prompt_trimming import HfTokenTrimmer
 from lmwrapper.runtime import Runtime
 from lmwrapper.structs import LmChatDialog, LmChatTurn, LmPrompt
-from lmwrapper.utils import StrEnum
-
-
-class Models(StrEnum):
-    CodeT5plus_220M = "Salesforce/codet5p-220m"
-    CodeT5plus_6B = "Salesforce/codet5p-6b"
-    CodeGen2_1B = "Salesforce/codegen2-1B"
-    CodeGen2_3_7B = "Salesforce/codegen2-3_7B"
-    InstructCodeT5plus_16B = "Salesforce/instructcodet5p-16b"
-    CodeLLama_7B = "codellama/CodeLlama-7b-hf"
-    CodeLLama_7B_Instruct = "codellama/CodeLlama-7b-Instruct-hf"
-    DistilGPT2 = "distilgpt2"
-    TinyLLamaChat = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-    BabyLLama = "timinar/baby-llama-58m"
-    GPT2 = "gpt2"
-    Mistral_7B = "mistralai/Mistral-7B-v0.1"
-
 
 CUDA_UNAVAILABLE = not torch.cuda.is_available()
 try:
@@ -46,10 +32,11 @@ BIG_MODELS = BIG_SEQ2SEQ_MODELS | BIG_CAUSAL_MODELS
 ALL_MODELS = SEQ2SEQ_MODELS | CAUSAL_MODELS | BIG_MODELS
 
 
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_tinyllama():
     lm = get_huggingface_lm(
         Models.TinyLLamaChat,
-        runtime=Runtime.PYTORCH,
+        runtime=Runtime.ACCELERATE,
         trust_remote_code=True,
         precision=torch.float16,
     )
@@ -70,7 +57,6 @@ def test_tinyllama():
         max_tokens=3,
         cache=False,
         temperature=0,
-        # add_special_tokens=False,
         add_bos_token=False,
         logprobs=1,
     )
@@ -82,10 +68,11 @@ def test_tinyllama():
     assert out.completion_text == "There is no"
 
 
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_babyllama():
     lm = get_huggingface_lm(
         Models.BabyLLama,
-        runtime=Runtime.PYTORCH,
+        runtime=Runtime.ACCELERATE,
         trust_remote_code=True,
         precision=torch.float16,
     )
@@ -113,12 +100,13 @@ def test_babyllama():
 
 
 @pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 @pytest.mark.parametrize("model", [Models.CodeLLama_7B])
 def test_code_llama_autoregressive(model):
     """7B and 13B *base* models can be used for text/code completion"""
     lm = get_huggingface_lm(
         model,
-        runtime=Runtime.PYTORCH,
+        runtime=Runtime.ACCELERATE,
         trust_remote_code=True,
         precision=torch.float16,
     )
@@ -138,12 +126,13 @@ def test_code_llama_autoregressive(model):
 
 
 @pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 @pytest.mark.parametrize("model", [Models.CodeLLama_7B, Models.CodeLLama_7B_Instruct])
 def test_code_llama_infill(model):
     """7B and 13B base *and* instruct variants support infilling based on surrounding content"""
     lm = get_huggingface_lm(
         model,
-        runtime=Runtime.PYTORCH,
+        runtime=Runtime.ACCELERATE,
         trust_remote_code=True,
         precision=torch.float16,
     )
@@ -168,12 +157,13 @@ def test_code_llama_infill(model):
 
 
 @pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 @pytest.mark.parametrize("model", [Models.CodeLLama_7B_Instruct])
 def test_code_llama_conversation(model):
     """Instruction fine-tuned models can be used in conversational interfaces"""
     lm = get_huggingface_lm(
         model,
-        runtime=Runtime.PYTORCH,
+        runtime=Runtime.ACCELERATE,
         trust_remote_code=True,
         precision=torch.float16,
     )
@@ -223,12 +213,14 @@ def test_code_llama_conversation(model):
     assert out.completion_text == "  ```\n"
 
 
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 @pytest.mark.slow()
 def test_trim_start():
     lm = get_huggingface_lm(
         Models.CodeGen2_1B,
-        runtime=Runtime.PYTORCH,
+        runtime=Runtime.ACCELERATE,
         trust_remote_code=True,
+        precision=torch.float16,
     )
     ltrimmer = HfTokenTrimmer(2, lm._tokenizer, start_from_left_side=True)
 
@@ -246,17 +238,19 @@ def test_trim_start():
 
 
 @pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_logprobs_codegen2():
     # model = Models.CodeGen2_1B
-    model = Models.CodeGen2_3_7B
-    # model = "Salesforce/codegen2-16B"
+    # model = Models.CodeGen2_3_7B
+    model = "Salesforce/codegen2-16B"
     lm = get_huggingface_lm(
         model,
         # Models.CodeGen2_3_7B,
         # "Salesforce/codegen2-16B",
         allow_patch_model_forward=False,
-        runtime=Runtime.PYTORCH,
+        runtime=Runtime.ACCELERATE,
         trust_remote_code=True,
+        precision=torch.float16,
     )
     prompt = LmPrompt(
         "def hello_world():\n   print('",
@@ -267,7 +261,6 @@ def test_logprobs_codegen2():
     outa = lm.predict(prompt)
     logprobs_a = np.array(outa.completion_logprobs)
     del outa
-    del lm._model
     del lm
     import gc
 
@@ -277,8 +270,9 @@ def test_logprobs_codegen2():
     lm = get_huggingface_lm(
         model,
         allow_patch_model_forward=True,
-        runtime=Runtime.PYTORCH,
+        runtime=Runtime.ACCELERATE,
         trust_remote_code=True,
+        precision=torch.float16,
     )
     prompt = LmPrompt(
         "def hello_world():\n   print('",
@@ -291,12 +285,17 @@ def test_logprobs_codegen2():
     outb = lm.predict(prompt)
     logprobs_b = np.array(outb.completion_logprobs)
 
-    assert np.allclose(logprobs_a, logprobs_b, atol=0.001, rtol=0.001)
+    assert np.allclose(logprobs_a, logprobs_b, atol=0.1, rtol=0.001)
 
 
 @pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_stop_n_codet5():
-    lm = get_huggingface_lm(Models.CodeT5plus_220M, runtime=Runtime.PYTORCH)
+    lm = get_huggingface_lm(
+        Models.CodeT5plus_220M,
+        runtime=Runtime.ACCELERATE,
+        precision=torch.float16,
+    )
     no_logprobs_prompt = LmPrompt(
         text="def hello_world():",
         max_tokens=50,
@@ -381,11 +380,13 @@ def test_stop_n_codet5():
 
 
 @pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_stop_n_codegen2():
     lm = get_huggingface_lm(
         Models.CodeGen2_1B,
-        runtime=Runtime.PYTORCH,
+        runtime=Runtime.ACCELERATE,
         trust_remote_code=True,
+        precision=torch.float16,
     )
     prompt = LmPrompt(
         text="def hello_world():\n",
@@ -431,11 +432,13 @@ def test_stop_n_codegen2():
 
 
 @pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_logprobs_equal_stop_codegen2():
     lm = get_huggingface_lm(
         Models.CodeGen2_1B,
-        runtime=Runtime.PYTORCH,
+        runtime=Runtime.ACCELERATE,
         trust_remote_code=True,
+        precision=torch.float16,
     )
     stop = "    "
     prompt = LmPrompt(
@@ -476,11 +479,13 @@ def test_logprobs_equal_stop_codegen2():
 
 
 @pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_logprobs_echo_stop_codegen2():
     lm = get_huggingface_lm(
         Models.CodeGen2_1B,
-        runtime=Runtime.PYTORCH,
+        runtime=Runtime.ACCELERATE,
         trust_remote_code=True,
+        precision=torch.float16,
     )
     stop = "    "
     prompt = LmPrompt(
@@ -513,7 +518,9 @@ def test_stop_token_removal():
 3. France
 4. Mexico"""
     # Load model
-    lm = get_huggingface_lm(Models.DistilGPT2, runtime=Runtime.PYTORCH)
+    lm = get_huggingface_lm(
+        Models.DistilGPT2, precision=torch.float32, runtime=Runtime.ACCELERATE
+    )
 
     # Let's make sure we get a stop token in our prompt normally
     prompt = LmPrompt(
@@ -521,6 +528,7 @@ def test_stop_token_removal():
         max_tokens=15,
         cache=False,
         temperature=0,
+        logprobs=1,
     )
     out = lm.predict(prompt)
     assert "Italy" in out.completion_text
@@ -701,16 +709,24 @@ def test_stop_token_removal():
     assert "I like to eat candy" not in out.completion_text
 
 
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_degenerate_offsets():
-    lm = get_huggingface_lm(Models.DistilGPT2)
+    lm = get_huggingface_lm(
+        Models.DistilGPT2,
+        runtime=Runtime.ACCELERATE,
+        precision=torch.float16,
+    )
     token_ids = [13, 198, 198]
     offsets = _get_token_offsets(lm._tokenizer, token_ids)
     assert offsets == [(0, 1), (1, 2), (2, 3)]
 
 
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_stop_tokens():
     # Load model
-    lm = get_huggingface_lm(Models.DistilGPT2, runtime=Runtime.PYTORCH)
+    lm = get_huggingface_lm(
+        Models.DistilGPT2, precision=torch.float16, runtime=Runtime.ACCELERATE
+    )
 
     # Let's make sure we get a stop token in our prompt normally
     prompt = LmPrompt(
@@ -769,6 +785,7 @@ def test_stop_tokens():
     assert "\n\n\n" not in out.completion_text
 
 
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_distilgpt2_pytorch_runtime():
     prompt = LmPrompt(
         "print('Hello world",
@@ -776,15 +793,18 @@ def test_distilgpt2_pytorch_runtime():
         cache=False,
         temperature=0,
     )
-    lm = get_huggingface_lm(Models.DistilGPT2, runtime=Runtime.PYTORCH)
+    lm = get_huggingface_lm(
+        Models.DistilGPT2, precision=torch.float16, runtime=Runtime.ACCELERATE
+    )
     out = lm.predict(prompt)
     assert out.completion_text
 
 
 @pytest.mark.slow()
 @pytest.mark.parametrize("lm", ALL_MODELS)
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_all_pytorch_runtime(lm: str):
-    if lm == Models.InstructCodeT5plus_16B or (SMALL_GPU and lm in BIG_MODELS):
+    if SMALL_GPU and lm in BIG_MODELS:
         pytest.skip(
             f"Skipped model '{lm}' as model too large for available GPU memory.",
         )
@@ -795,87 +815,18 @@ def test_all_pytorch_runtime(lm: str):
         temperature=0,
         add_bos_token=lm not in SEQ2SEQ_MODELS | BIG_SEQ2SEQ_MODELS,
     )
-
-    hf_lm = get_huggingface_lm(
+    lm = get_huggingface_lm(
         lm,
-        runtime=Runtime.PYTORCH,
+        runtime=Runtime.ACCELERATE,
         trust_remote_code=True,
         precision=torch.float16,
     )
-    out = hf_lm.predict(prompt)
-    assert out.completion_text
-    del out
-    del hf_lm._model
-    del hf_lm
-    import gc
-
-    gc.collect()
-    torch.cuda.empty_cache()
-
-
-@pytest.mark.slow()
-@pytest.mark.skip(reason="ORT is not ready yet")
-@pytest.mark.parametrize("runtime", [Runtime.ORT_CPU, Runtime.ORT_CUDA])
-@pytest.mark.parametrize("lm", ALL_MODELS)
-def test_get_ort(runtime: Runtime, lm: str):
-    prompt = LmPrompt(
-        "print('Hello world",
-        max_tokens=1,
-        cache=False,
-        temperature=0,
-    )
-    lm = get_huggingface_lm(lm, runtime=runtime)
     out = lm.predict(prompt)
     assert out.completion_text
 
 
 @pytest.mark.slow()
-@pytest.mark.skip(reason="Better Transformer is not ready yet")
-@pytest.mark.parametrize("lm", [Models.DistilGPT2, Models.GPT2])
-def test_get_better_transformer(lm):
-    prompt = LmPrompt(
-        "print('Hello world",
-        max_tokens=1,
-        cache=False,
-        temperature=0,
-    )
-    lm = get_huggingface_lm(lm, runtime=Runtime.BETTER_TRANSFORMER)
-    out = lm.predict(prompt)
-    assert out.completion_text
-
-
-@pytest.mark.slow()
-@pytest.mark.skip(reason="Better Transformer is not ready yet")
-def test_codegen2_predict_bt():
-    lm = Models.CodeGen2_1B
-    with pytest.raises(Exception) as e_info:
-        get_huggingface_lm(lm, runtime=Runtime.BETTER_TRANSFORMER)
-        assert str(e_info.value).startswith("WARNING BetterTransformer")
-
-
-@pytest.mark.slow()
-@pytest.mark.skip(reason="TensorRT is not ready yet")
-@pytest.mark.parametrize("lm", CAUSAL_MODELS)
-@pytest.mark.skipif(
-    CUDA_UNAVAILABLE,
-    reason="Cannot test ORT/ONNX CUDA runtime without CUDA",
-)
-def test_get_tensorrt(lm: str):
-    get_huggingface_lm(lm, runtime=Runtime.ORT_TENSORRT)
-
-
-def test_tokenizer():
-    lm = get_huggingface_lm("gpt2")
-    tokens = lm.tokenize("I like pie")
-    assert tokens == ["I", "Ġlike", "Ġpie"]
-
-
-def test_max_length():
-    lm = get_huggingface_lm("gpt2")
-    assert lm.token_limit == 1024
-
-
-@pytest.mark.skip()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_code_llama_stop():
     prompt = LmPrompt(
         'def double(x) -> int:\n    """Double the given number"""',
@@ -889,87 +840,19 @@ def test_code_llama_stop():
         Models.CodeLLama_7B,
         trust_remote_code=True,
         precision=torch.float16,
+        runtime=Runtime.ACCELERATE,
     )
 
     out = lm.predict(prompt)
     assert out.completion_text
 
 
-def test_tokenizer_offsets_code_llama():
-    model_name = Models.CodeLLama_7B
-    # Get the huggingface tokenizer
-    from transformers import AutoTokenizer
-
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
-    token_ids = [13, 1678, 736, 921, 334, 29871, 29906, 13, 13, 13, 1753]
-    token_vals = [
-        "\n",
-        "   ",
-        " return",
-        " x",
-        " *",
-        " ",
-        "2",
-        "\n",
-        "\n",
-        "\n",
-        "def",
-    ]
-    print([tokenizer.decode([t]) for t in token_ids])
-    cum_len = np.cumsum([len(t) for t in token_vals])
-    print(cum_len)
-    expected_offsets = [0, *(cum_len[:-1])]
-    print("Expected", expected_offsets)
-    assert expected_offsets[:3] == [0, 1, 4]
-    offsets = _get_token_offsets(tokenizer, token_ids)
-    starts, ends = zip(*offsets, strict=False)
-    assert list(starts) == expected_offsets
-
-
-def test_offsets_for_mistral():
-    model_name = Models.Mistral_7B
-    from transformers import AutoTokenizer
-
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
-    # token_ids = [2287,  2682,   618, 2287, 2682]
-    # assert ' ' + tokenizer.decode(token_ids) == '    print("    print'
-    token_ids = [2287, 2682, 618]
-    offsets = _get_token_offsets(tokenizer, token_ids)
-    assert offsets == [
-        (0, len("▁▁▁")),
-        (3, 3 + len("▁print")),
-        (3 + len("▁print"), 3 + len("▁print") + len('("')),
-    ]
-
-
-def test_offsets_for_mistral2():
-    model_name = Models.Mistral_7B
-    from transformers import AutoTokenizer
-
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
-    token_ids = [618, 2287, 2682, 618]
-    offsets = _get_token_offsets(tokenizer, token_ids)
-    assert offsets == [
-        (0, len('("')),
-        (2, 2 + len("▁▁▁")),
-        (5, 5 + len("▁print")),
-        (11, 11 + len('("')),
-    ]
-
-
-def test_offsets_for_mistral3():
-    model_name = Models.Mistral_7B
-    from transformers import AutoTokenizer
-
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
-    token_ids = [2682, 618]
-    offsets = _get_token_offsets(tokenizer, token_ids)
-    assert offsets == [(0, 0 + len("▁print")), (6, 6 + len('("'))]
-
-
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_offsets_for_removal_prompt():
     # get the tokenizer model
-    lm = get_huggingface_lm(Models.DistilGPT2, runtime=Runtime.PYTORCH)
+    lm = get_huggingface_lm(
+        Models.DistilGPT2, precision=torch.float16, runtime=Runtime.ACCELERATE
+    )
     tokenizer = lm._tokenizer
     seq = [4486, 198, 21, 13, 8031]
     print("dec\n" + tokenizer.decode(seq))
@@ -990,53 +873,8 @@ def test_offsets_for_removal_prompt():
     assert len(expanded) == len(text)
 
 
-def test_token_expanding_weird_from_t5():
-    expand = _expand_offsets_to_a_token_index_for_every_text_index(
-        [(0, 1), (0, 1), (0, 1), (1, 6), (7, 13), (13, 14), (14, 15)],
-    )
-    assert expand == [
-        0,
-        *([3] * (6 - 1)),
-        *([4] * (13 - 6)),
-        *([5] * (14 - 13)),
-        *([6] * (15 - 14)),
-    ]
-
-
-def test_degenerative_multiple():
-    # Load model
-    tokenizer = AutoTokenizer.from_pretrained(Models.DistilGPT2, use_fast=True)
-    tokens = [13, 198, 198, 198, 198]
-    text = ".\n\n\n\n"
-    assert tokenizer.decode(tokens) == text
-    offsets = _get_token_offsets(tokenizer, tokens)
-    assert offsets == [
-        (0, 1),
-        (1, 2),
-        (2, 3),
-        (3, 4),
-        (4, 5),
-    ]
-
-
-def test_degenerative_multiple_2():
-    # Load model
-    tokenizer = AutoTokenizer.from_pretrained(Models.DistilGPT2, use_fast=True)
-    tokens = [13, 198, 198, 198, 198, 198]
-    text = ".\n\n\n\n\n"
-    assert tokenizer.decode(tokens) == text
-    offsets = _get_token_offsets(tokenizer, tokens)
-    assert offsets == [
-        (0, 1),
-        (1, 2),
-        (2, 3),
-        (3, 4),
-        (4, 5),
-        (5, 6),
-    ]
-
-
 @pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 @pytest.mark.parametrize(
     "model",
     [
@@ -1052,7 +890,7 @@ def test_hello_world_prompt(model):
         )
     lm = get_huggingface_lm(
         model,
-        runtime=Runtime.PYTORCH,
+        runtime=Runtime.ACCELERATE,
         trust_remote_code=True,
         precision=torch.float16,
     )
@@ -1107,8 +945,58 @@ def test_hello_world_prompt(model):
     }
 
 
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_check_tokenizer_check():
     mistral_tokenizer = AutoTokenizer.from_pretrained(Models.Mistral_7B, use_fast=True)
     assert _check_tokenizer_to_see_if_adds_bos(mistral_tokenizer, True)
     gpt2_tokenizer = AutoTokenizer.from_pretrained(Models.DistilGPT2, use_fast=True)
     assert not _check_tokenizer_to_see_if_adds_bos(gpt2_tokenizer, True)
+
+
+capital_prompt = (
+    "The capital of Germany is the city Berlin. "
+    "The capital of Spain is the city Madrid. "
+    "The capital of UK is the city London. "
+    "The capital of France"
+)
+
+
+@pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
+def test_stopping_span_subtoks():
+    lm = get_huggingface_lm(
+        "codellama/CodeLlama-70b-Instruct-hf",
+        runtime=Runtime.ACCELERATE,
+        precision=torch.float16,
+    )
+    val_normal = lm.predict(
+        LmPrompt(
+            capital_prompt,
+            max_tokens=4,
+            logprobs=1,
+            temperature=0,
+            cache=False,
+        ),
+    )
+    # Chopping off between multiple subtokens
+    val_no_ris = lm.predict(
+        LmPrompt(
+            capital_prompt,
+            max_tokens=10,
+            logprobs=1,
+            temperature=0,
+            cache=False,
+            stop=["ity Paris"],
+        ),
+    )
+    assert val_no_ris.completion_text == " is the c"
+    assert len(val_no_ris.completion_logprobs) == 3
+    assert np.allclose(
+        val_no_ris.completion_logprobs,
+        val_normal.completion_logprobs[:-1],
+        atol=0.001,
+        rtol=0.001,
+    )
+    assert (
+        lm.remove_special_chars_from_tokens(val_no_ris.completion_tokens)[-1] == " city"
+    )

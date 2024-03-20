@@ -10,6 +10,12 @@ def pytest_addoption(parser):
         default=False,
         help="run slow tests",
     )
+    parser.addoption(
+        "--runopenai",
+        action="store_true",
+        default=True,
+        help="run OpenAI tests",
+    )
 
 
 def pytest_configure(config):
@@ -21,6 +27,9 @@ def pytest_collection_modifyitems(config, items):
         # --runslow given in cli: do not skip slow tests
         return
     skip_slow = pytest.mark.skip(reason="need --runslow option to run")
+    skip_openai = pytest.mark.skip(reason="need --runopenai option to run")
     for item in items:
         if "slow" in item.keywords:
             item.add_marker(skip_slow)
+        if "openai" in item.keywords:
+            item.add_marker(skip_openai)

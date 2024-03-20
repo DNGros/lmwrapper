@@ -12,7 +12,7 @@ cur_file = Path(__file__).parent.absolute()
 
 
 def extract_code_blocks(file):
-    with open(file) as f:
+    with open(file, encoding="locale") as f:
         content = f.read()
     return re.findall(r"```python\r?\n(.*?)```", content, re.DOTALL)
 

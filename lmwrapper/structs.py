@@ -154,8 +154,7 @@ class LmPrompt:
         """
         if self.is_text_a_chat():
             return self.text.to_default_string_prompt()
-        else:
-            return self.text
+        return self.text
 
     def dict_serialize(self) -> dict:
         """

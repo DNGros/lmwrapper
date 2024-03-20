@@ -5,22 +5,28 @@ from functools import cached_property
 from typing import TYPE_CHECKING
 
 import torch
-from transformers import GenerationConfig, PreTrainedModel, PreTrainedTokenizerFast
+from transformers import (
+    GenerationConfig,
+    GPT2LMHeadModel,
+    PreTrainedModel,
+    PreTrainedTokenizerFast,
+)
 from transformers.utils.generic import TensorType
 
-from lmwrapper._TokenStoppingCriteria import _TokenStoppingCriteria
 from lmwrapper.abstract_predictor import LmPredictor
-from lmwrapper.HuggingfacePrediction import HuggingfacePrediction
 from lmwrapper.prompt_trimming import PromptTrimmer
 from lmwrapper.runtime import Runtime
-from lmwrapper.structs import LmPrediction, LmPrompt
+from lmwrapper.structs import LmChatDialog, LmPrediction, LmPrompt
 from lmwrapper.utils import log_cuda_mem
+
+from .prediction import HuggingFacePrediction
+from .stopping_criteria import StringStoppingCriteria
 
 if TYPE_CHECKING:
     from transformers.generation.utils import GenerateOutput
 
 
-class HuggingfacePredictor(LmPredictor):
+class HuggingFacePredictor(LmPredictor):
     def __init__(
         self,
         tokenizer: PreTrainedTokenizerFast,
@@ -50,7 +56,11 @@ class HuggingfacePredictor(LmPredictor):
         self,
         prompt: LmPrompt,
     ) -> LmPrediction | list[LmPrediction]:
-        if not isinstance(prompt.text, str) and len(prompt.text) != 1:
+        if (
+            not prompt.is_text_a_chat()
+            and not isinstance(prompt.text, str)
+            and len(prompt.text) != 1
+        ):
             msg = "Prompt batches other than size 1 are not supported."
             raise NotImplementedError(
                 msg,
@@ -120,12 +130,24 @@ class HuggingfacePredictor(LmPredictor):
         if self.prompt_trimmer:
             prompt_text = self.prompt_trimmer.trim_text(prompt_text)
 
-        encoded_input = self._tokenizer(
-            prompt_text,
-            return_tensors="pt",
-            return_attention_mask=model_requires_attention_mask,
-            add_special_tokens=prompt.add_special_tokens,
-        )
+        if prompt.is_text_a_chat():
+            encoded_input = self._tokenizer.apply_chat_template(
+                prompt.text.as_dicts()
+                if isinstance(prompt.text, LmChatDialog)
+                else prompt.text,
+                add_generation_prompt=True,
+                return_tensors="pt",
+                return_dict=True,
+                # return_attention_mask=model_requires_attention_mask,
+                # add_special_tokens=prompt.add_special_tokens,  # TODO: does this make sense for dialog?
+            )
+        else:
+            encoded_input = self._tokenizer(
+                prompt_text,
+                return_tensors="pt",
+                return_attention_mask=model_requires_attention_mask,
+                add_special_tokens=prompt.add_special_tokens,
+            )
 
         if len(encoded_input.input_ids) > self.token_limit:
             if self.prompt_trimmer:
@@ -136,26 +158,35 @@ class HuggingfacePredictor(LmPredictor):
                 raise ValueError(
                     msg,
                 )
-            else:
-                msg = "Prompt is too long for model. Please pass in a trimmer."
-                raise ValueError(
-                    msg,
-                )
+            msg = "Prompt is too long for model. Please pass in a trimmer."
+            raise ValueError(
+                msg,
+            )
 
         if is_encoder_decoder:
             encoded_input["decoder_input_ids"] = encoded_input["input_ids"].clone()
 
         logging.debug("Pre moving encoded tokens")
         log_cuda_mem()
-        if self.runtime != Runtime.ACCELERATE:
-            encoded_input = encoded_input.to(
-                self._device,
-            )  # Move to device
+
+        # All runtimes require input tensors to be on same device as model,
+        # so we must manually move the tensor. Currently, accelerate does not
+        # mandate it and usually takes care of moving automatically,
+        # however an edge case resulting from the GPT2 implementation
+        # requires us to manually move the input tensors to
+        # the same device as the input layer (wte+wpe) is on
+        device = (
+            self._model.transformer.wpe.weight.device
+            if self.runtime == Runtime.ACCELERATE
+            and isinstance(self._model, GPT2LMHeadModel)
+            else self._device
+        )
+
+        encoded_input = encoded_input.to(device)
+
         logging.debug("Post moving encoded tokens")
         log_cuda_mem()
-        # ONNX models themselves cannot be moved to a device
-        # but their input tensors must be moved to GPU
-        # Similarly, Accelerate takes care of moving tensors
+
         logging.debug("Pre model moving")
         log_cuda_mem()
 
@@ -213,15 +244,21 @@ class HuggingfacePredictor(LmPredictor):
         else:
             logging.info("Unable to predict decoding strategy!")
 
+        max_new_tokens = (
+            self.default_tokens_generated
+            if prompt.max_tokens is None
+            else prompt.max_tokens
+        )
+        if max_new_tokens == 0:
+            max_new_tokens += 1  # Huggingface produces one token always
+        # Ref https://github.com/huggingface/transformers/pull/28621
+
         # Ref https://gist.github.com/kinoc/8a042d8c5683725aa8c372274c02ea2f
         gen_config = GenerationConfig(
-            max_new_tokens=(
-                self.default_tokens_generated
-                if prompt.max_tokens is None
-                else prompt.max_tokens
-            ),
+            max_new_tokens=max_new_tokens,
             return_dict_in_generate=True,
             output_scores=need_log_prob,
+            output_logits=True,
             **optional_generation_kwargs,
         )
 
@@ -267,15 +304,17 @@ class HuggingfacePredictor(LmPredictor):
         )
         if prompt.stop:
             stopping_criteria = [
-                _TokenStoppingCriteria(
+                StringStoppingCriteria(
                     prompt.stop,
-                    decode=True,
                     tokenizer=self._tokenizer,
                     input_length=input_length,
                 ),
             ]
 
-        with torch.no_grad():
+        with torch.inference_mode():
+            # if prompt.echo:
+            # raw_forward = self._model(**encoded_input)
+            # raw_logits = raw_forward.logits
             generation_output: GenerateOutput = self._model.generate(
                 **encoded_input,
                 generation_config=gen_config,
@@ -288,14 +327,71 @@ class HuggingfacePredictor(LmPredictor):
         if patch_model_forward:
             self._model.forward = old_forward
 
-        model_output_sequence = generation_output.sequences[
-            0
-        ].detach()  # we will not mutate this one
+        # we will not mutate this one
+        model_output_sequence = generation_output.sequences[0].detach()
 
-        output_sequence = model_output_sequence.clone()  # we will mutate this one
-
+        # cut output sequence to exclude prompt
         generated_sequence = model_output_sequence[input_length:]
 
+        # we will mutate this one
+        output_sequence = model_output_sequence.clone()
+
+        # calculate top k tokens for logprobs
+
+        if prompt.logprobs > 0:
+            out_token_count = len(generated_sequence)
+            if is_encoder_decoder:
+                out_token_count += 1
+            # generation_output.logits is a tuple of tensors
+            # stack the logits and squeeze to produce (seq_len, vocab_size) tensor
+            logits = torch.stack(list(generation_output.logits), dim=0).squeeze(1)
+            assert logits.shape[0] == out_token_count
+            assert logits.shape[1] >= self._model.config.vocab_size
+            # if prompt.echo:
+            # logits = torch.cat((raw_logits.squeeze(), output_logits), dim=0)
+
+            # softmax for each position
+            softmax = torch.nn.functional.log_softmax(logits, dim=1)
+            assert softmax.shape[0] == out_token_count
+            assert softmax.shape[1] >= self._model.config.vocab_size
+
+            # get top k logits for each position
+            model_topk_tokens = torch.topk(softmax, k=prompt.logprobs)
+
+            # move the indices (token ids) and probabilities to CPU
+            model_topk_indices = model_topk_tokens.indices.detach().cpu()
+            model_topk_values = model_topk_tokens.values.detach().cpu()
+            assert model_topk_indices.shape == (out_token_count, prompt.logprobs)
+            assert model_topk_values.shape == (out_token_count, prompt.logprobs)
+
+            # list to store OrderedDicts
+            topk_tokens = []
+
+            # list to store top1 logprobs
+            alt_logprobs = []
+
+            # iterate over each position
+            for token_indices, token_probabilities in zip(
+                model_topk_indices, model_topk_values, strict=True
+            ):
+                # decode top tokens
+                decoded = [self._tokenizer.decode(t) for t in token_indices]
+
+                # produce a dict of token:logprob
+                topk_toks_inner = dict(
+                    zip(decoded, token_probabilities, strict=True)
+                )
+
+                # append highest prob to top1 logprobs
+                alt_logprobs.append(token_probabilities[0].item())
+
+                # append OrderedDict to list of top tokens
+                topk_tokens.append(topk_toks_inner)
+
+            # convert list of scalar tensors to an actual tensor (seq_len,)
+            alt_logprobs = torch.tensor(alt_logprobs, dtype=logits.dtype)
+
+        # begin stop token handling
         stop_token_idx_output = None
         stop_token_idx_generated = None
 
@@ -312,7 +408,7 @@ class HuggingfacePredictor(LmPredictor):
                 token_offsets,
             )
             if len(token_offsets_full) != len(generated_text):
-                raise RuntimeError(
+                msg = (
                     "Unexpected token offsets length\nGenerated text:"
                     f" '{generated_text}'\nToken offsets: {token_offsets}\nTokens:"
                     f" {self._tokenizer.convert_ids_to_tokens(generated_sequence)}\nToken"
@@ -320,7 +416,10 @@ class HuggingfacePredictor(LmPredictor):
                     f" {generated_sequence}\nSpecial ids:"
                     f" {self._tokenizer.all_special_ids}\nlen(token_offsets_full):"
                     f" {len(token_offsets_full)}\nlen(generated_text):"
-                    f" {len(generated_text)}\n",
+                    f" {len(generated_text)}\n"
+                )
+                raise RuntimeError(
+                    msg,
                 )
             sorted_stop_sequences = sorted(prompt.stop, key=len, reverse=True)
 
@@ -391,13 +490,28 @@ class HuggingfacePredictor(LmPredictor):
 
                 assert len(output_sequence) == len(logprobs)
             else:
+                # compute_transition_scores was built primarily for beam search!
+                # when doing beam search, or anything other than greedy decoding,
+                # your transition scores are no longer simply the top logits
+                # The library method handles the logic for that, although
+                # we do not need it as we generally do greedy decoding.
                 output_logprobs = self._model.compute_transition_scores(
                     generation_output.sequences,
                     generation_output.scores,
                     normalize_logits=True,
-                )[0]
+                )
+
+                output_logprobs = output_logprobs[0]
 
                 logprobs = output_logprobs.detach().cpu()
+
+                # top k is operating on the raw, unprocessed logits
+                # for the following assert to hold with logit warpers e.g. temperature
+                # top k would need to use scores instead of logits. that is a simple
+                # one line change, but I figured
+                if prompt.temperature == 0:
+                    assert torch.allclose(logprobs, alt_logprobs, atol=0.001)
+
                 # Free memory
                 del output_logprobs
 
@@ -473,7 +587,7 @@ class HuggingfacePredictor(LmPredictor):
         logging.debug("Post del statements")
         log_cuda_mem()
 
-        return HuggingfacePrediction(
+        return HuggingFacePrediction(
             completion_text=clean_generated_text,
             prompt=prompt,
             metad=updated_output,
@@ -610,8 +724,7 @@ def _verify_concatenable(generated_tokens: list[str], generated_text: str):
         )
         if raise_exception:
             raise NotImplementedError(msg)
-        else:
-            logging.warning(msg)
+        logging.warning(msg)
 
 
 def _figure_out_generated_text(
@@ -856,7 +969,7 @@ def _expand_offsets_to_a_token_index_for_every_text_index(
     token_offsets = _merge_equivalent_consecutive_spans(token_offsets)
     token_offsets_full = []
     for i, (start, end) in enumerate(token_offsets):
-        last_start, last_end = token_offsets[i - 1] if i > 0 else (0, start)
+        _last_start, last_end = token_offsets[i - 1] if i > 0 else (0, start)
         token_offsets_full.extend([i] * (end - last_end))
     return token_offsets_full
 
