@@ -1,3 +1,4 @@
+# TODO this looks like copy paste from huggingface. We should remove this.
 from test.test_huggingface import Models
 
 import numpy as np
@@ -31,6 +32,7 @@ BIG_MODELS = BIG_SEQ2SEQ_MODELS | BIG_CAUSAL_MODELS
 ALL_MODELS = SEQ2SEQ_MODELS | CAUSAL_MODELS | BIG_MODELS
 
 
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_tinyllama():
     lm = get_huggingface_lm(
         Models.TinyLLamaChat,
@@ -66,6 +68,7 @@ def test_tinyllama():
     assert out.completion_text == "There is no"
 
 
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_babyllama():
     lm = get_huggingface_lm(
         Models.BabyLLama,
@@ -97,6 +100,7 @@ def test_babyllama():
 
 
 @pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 @pytest.mark.parametrize("model", [Models.CodeLLama_7B])
 def test_code_llama_autoregressive(model):
     """7B and 13B *base* models can be used for text/code completion"""
@@ -122,6 +126,7 @@ def test_code_llama_autoregressive(model):
 
 
 @pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 @pytest.mark.parametrize("model", [Models.CodeLLama_7B, Models.CodeLLama_7B_Instruct])
 def test_code_llama_infill(model):
     """7B and 13B base *and* instruct variants support infilling based on surrounding content"""
@@ -152,6 +157,7 @@ def test_code_llama_infill(model):
 
 
 @pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 @pytest.mark.parametrize("model", [Models.CodeLLama_7B_Instruct])
 def test_code_llama_conversation(model):
     """Instruction fine-tuned models can be used in conversational interfaces"""
@@ -207,6 +213,7 @@ def test_code_llama_conversation(model):
     assert out.completion_text == "  ```\n"
 
 
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 @pytest.mark.slow()
 def test_trim_start():
     lm = get_huggingface_lm(
@@ -231,6 +238,7 @@ def test_trim_start():
 
 
 @pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_logprobs_codegen2():
     # model = Models.CodeGen2_1B
     # model = Models.CodeGen2_3_7B
@@ -281,6 +289,7 @@ def test_logprobs_codegen2():
 
 
 @pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_stop_n_codet5():
     lm = get_huggingface_lm(
         Models.CodeT5plus_220M,
@@ -371,6 +380,7 @@ def test_stop_n_codet5():
 
 
 @pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_stop_n_codegen2():
     lm = get_huggingface_lm(
         Models.CodeGen2_1B,
@@ -422,6 +432,7 @@ def test_stop_n_codegen2():
 
 
 @pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_logprobs_equal_stop_codegen2():
     lm = get_huggingface_lm(
         Models.CodeGen2_1B,
@@ -468,6 +479,7 @@ def test_logprobs_equal_stop_codegen2():
 
 
 @pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_logprobs_echo_stop_codegen2():
     lm = get_huggingface_lm(
         Models.CodeGen2_1B,
@@ -697,6 +709,7 @@ def test_stop_token_removal():
     assert "I like to eat candy" not in out.completion_text
 
 
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_degenerate_offsets():
     lm = get_huggingface_lm(
         Models.DistilGPT2,
@@ -708,6 +721,7 @@ def test_degenerate_offsets():
     assert offsets == [(0, 1), (1, 2), (2, 3)]
 
 
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_stop_tokens():
     # Load model
     lm = get_huggingface_lm(
@@ -771,6 +785,7 @@ def test_stop_tokens():
     assert "\n\n\n" not in out.completion_text
 
 
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_distilgpt2_pytorch_runtime():
     prompt = LmPrompt(
         "print('Hello world",
@@ -787,6 +802,7 @@ def test_distilgpt2_pytorch_runtime():
 
 @pytest.mark.slow()
 @pytest.mark.parametrize("lm", ALL_MODELS)
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_all_pytorch_runtime(lm: str):
     if SMALL_GPU and lm in BIG_MODELS:
         pytest.skip(
@@ -810,6 +826,7 @@ def test_all_pytorch_runtime(lm: str):
 
 
 @pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_code_llama_stop():
     prompt = LmPrompt(
         'def double(x) -> int:\n    """Double the given number"""',
@@ -830,6 +847,7 @@ def test_code_llama_stop():
     assert out.completion_text
 
 
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_offsets_for_removal_prompt():
     # get the tokenizer model
     lm = get_huggingface_lm(
@@ -855,53 +873,8 @@ def test_offsets_for_removal_prompt():
     assert len(expanded) == len(text)
 
 
-def test_token_expanding_weird_from_t5():
-    expand = _expand_offsets_to_a_token_index_for_every_text_index(
-        [(0, 1), (0, 1), (0, 1), (1, 6), (7, 13), (13, 14), (14, 15)],
-    )
-    assert expand == [
-        0,
-        *([3] * (6 - 1)),
-        *([4] * (13 - 6)),
-        *([5] * (14 - 13)),
-        *([6] * (15 - 14)),
-    ]
-
-
-def test_degenerative_multiple():
-    # Load model
-    tokenizer = AutoTokenizer.from_pretrained(Models.DistilGPT2, use_fast=True)
-    tokens = [13, 198, 198, 198, 198]
-    text = ".\n\n\n\n"
-    assert tokenizer.decode(tokens) == text
-    offsets = _get_token_offsets(tokenizer, tokens)
-    assert offsets == [
-        (0, 1),
-        (1, 2),
-        (2, 3),
-        (3, 4),
-        (4, 5),
-    ]
-
-
-def test_degenerative_multiple_2():
-    # Load model
-    tokenizer = AutoTokenizer.from_pretrained(Models.DistilGPT2, use_fast=True)
-    tokens = [13, 198, 198, 198, 198, 198]
-    text = ".\n\n\n\n\n"
-    assert tokenizer.decode(tokens) == text
-    offsets = _get_token_offsets(tokenizer, tokens)
-    assert offsets == [
-        (0, 1),
-        (1, 2),
-        (2, 3),
-        (3, 4),
-        (4, 5),
-        (5, 6),
-    ]
-
-
 @pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 @pytest.mark.parametrize(
     "model",
     [
@@ -972,6 +945,7 @@ def test_hello_world_prompt(model):
     }
 
 
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_check_tokenizer_check():
     mistral_tokenizer = AutoTokenizer.from_pretrained(Models.Mistral_7B, use_fast=True)
     assert _check_tokenizer_to_see_if_adds_bos(mistral_tokenizer, True)
@@ -987,6 +961,8 @@ capital_prompt = (
 )
 
 
+@pytest.mark.slow()
+@pytest.mark.skipif(CUDA_UNAVAILABLE, reason="No CUDA available")
 def test_stopping_span_subtoks():
     lm = get_huggingface_lm(
         "codellama/CodeLlama-70b-Instruct-hf",
