@@ -24,7 +24,7 @@ def set_cache_dir(path: Path, size_limit: int = int(1e9)):
 def _verify_looks_like_cache_dir(path: Path):
     for file_or_directory in path.rglob("*"):
         if file_or_directory.is_file():
-            if file_or_directory.suffix in (".py", ".txt", ".md"):
+            if file_or_directory.suffix in {".py", ".txt", ".md"}:
                 msg = (
                     "Attempting to set cache directory to what appears to be a "
                     "source directory. Instead set it to its own subdirectory inside"

@@ -2,22 +2,29 @@ import math
 
 import numpy as np
 import pytest
+import torch
 
-from lmwrapper.huggingface_wrapper import get_huggingface_lm
-from lmwrapper.openai_wrapper import OpenAiModelNames, get_open_ai_lm
+from lmwrapper.huggingface.wrapper import get_huggingface_lm
+from lmwrapper.openai.wrapper import OpenAiModelNames, get_open_ai_lm
+from lmwrapper.runtime import Runtime
 from lmwrapper.structs import LmPrompt
+from test.test_vllm import VLLM_UNAVAILABLE
 
 ALL_MODELS = [
     get_open_ai_lm(OpenAiModelNames.gpt_3_5_turbo_instruct),
+    get_huggingface_lm(
+        "gpt2",
+        runtime=Runtime.ACCELERATE,
+        precision=torch.float16,
+    ),
     get_huggingface_lm("gpt2"),
 ]
 
+if not VLLM_UNAVAILABLE:
+    from lmwrapper.vllm.wrapper import get_vllm_lm
+    ALL_MODELS.append(get_vllm_lm("gpt2"))
 
-ECHOABLE_MODELS = [
-    # get_open_ai_lm(OpenAiModelNames.gpt_3_5_turbo_instruct),
-    # Won't work with now that echo disabled
-    get_huggingface_lm("gpt2"),
-]
+ECHOABLE_MODELS = ALL_MODELS[1:]
 
 
 @pytest.mark.parametrize("lm", ALL_MODELS)
@@ -619,7 +626,9 @@ def test_simple_pred_serialize(lm):
     pprint(pred_dict)
 
 
-@pytest.mark.skip(reason="Huggingface does not support completion_token_offsets currently")
+@pytest.mark.skip(
+    reason="Huggingface does not support completion_token_offsets currently"
+)
 @pytest.mark.parametrize("lm", ALL_MODELS)
 def test_token_offsets(lm):
     prompt = "A B C D E F G H"
@@ -634,8 +643,7 @@ def test_token_offsets(lm):
     assert pred.completion_text == " I J K"
     assert pred.completion_tokens == [" I", " J", " K"]
     base_len = len(prompt)
-    assert pred.completion_token_offsets == [
-        base_len + 0, base_len + 2, base_len + 4]
+    assert pred.completion_token_offsets == [base_len + 0, base_len + 2, base_len + 4]
 
 
 @pytest.mark.parametrize("lm", ALL_MODELS)
@@ -658,5 +666,3 @@ def test_token_offsets(lm):
         assert isinstance(top_probs[i][expected], float)
         assert top_probs[i][expected] == pred.completion_logprobs[i]
         assert top_probs[i][expected] < 0
-
-

@@ -37,8 +37,7 @@ class LmPredictor:
             except OperationalError as e:
                 print("Failed to cache", e)
             return val
-        else:
-            return self._predict_maybe_cached(prompt)
+        return self._predict_maybe_cached(prompt)
 
     def _cache_key_for_prompt(self, prompt):
         return (prompt, self._get_cache_key_metadata())

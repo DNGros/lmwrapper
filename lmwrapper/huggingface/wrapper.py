@@ -6,10 +6,9 @@ from typing import Literal
 from packaging import version
 
 from lmwrapper.env import _MPS_ENABLED, _ONNX_RUNTIME, _QUANTIZATION_ENABLED
-from lmwrapper.HuggingfacePredictor import HuggingfacePredictor
+from lmwrapper.huggingface.predictor import HuggingFacePredictor
 from lmwrapper.prompt_trimming import PromptTrimmer
 from lmwrapper.runtime import Runtime
-from lmwrapper.structs import LmPrompt
 from lmwrapper.utils import log_cuda_mem
 
 try:
@@ -85,9 +84,9 @@ except ImportError:
 # available for a limited number of models, notably LLaMa/CodeLLaMa!
 _FLASH_ATTENTION_AVAILABLE = False
 try:
-    from transformers.utils.import_utils import is_flash_attn_available
+    from transformers.utils.import_utils import is_flash_attn_2_available
 
-    _FLASH_ATTENTION_AVAILABLE = is_flash_attn_available()
+    _FLASH_ATTENTION_AVAILABLE = is_flash_attn_2_available()
 except ImportError:
     pass
 
@@ -162,9 +161,12 @@ def _get_accelerator() -> torch.device:
             # If quantization is enabled and bits and bytes is not
             # compiled with CUDA, things don't work right
             if not bitsandbytes.COMPILED_WITH_CUDA:
-                raise Exception(
+                msg = (
                     "Quantization was enabled but `bitsandbytes` is not compiled with"
-                    " CUDA.",
+                    " CUDA."
+                )
+                raise Exception(
+                    msg,
                 )
         return torch.device("cuda")
 
@@ -182,7 +184,7 @@ def get_huggingface_lm(
     allow_patch_model_forward: bool = True,
     prompt_trimmer: PromptTrimmer = None,
     device: torch.device | str = None,
-) -> HuggingfacePredictor:
+) -> HuggingFacePredictor:
     """
     Initialize and return a Hugging Face language model for prediction.
 
@@ -236,18 +238,9 @@ def get_huggingface_lm(
     """
     if isinstance(device, str):
         if device.strip() == "":
-            raise ValueError("Empty string provided for device.")
-        else:
-            device = torch.device(device)
-
-    if runtime != Runtime.PYTORCH:
-        msg = (
-            "Accelerated inference model support is still under"
-            " development. Please use Runtime.PYTORCH until support matures."
-        )
-        raise NotImplementedError(
-            msg,
-        )
+            msg = "Empty string provided for device."
+            raise ValueError(msg)
+        device = torch.device(device)
 
     _kwargs = {"trust_remote_code": trust_remote_code}
 
@@ -371,12 +364,9 @@ def _configure_model(
         # T5 class does not support this arg,
         # only autoclasses do
         _kwargs.pop("trust_remote_code", None)
-    elif model.startswith("Salesforce/codet5p-") and model.endswith("b"):
-        model_class = AutoModelForSeq2SeqLM
-        _kwargs |= {
-            "low_cpu_mem_usage": True,
-        }
-    elif model == "Salesforce/instructcodet5p-16b":
+    elif (
+        model.startswith("Salesforce/codet5p-") and model.endswith("b")
+    ) or model == "Salesforce/instructcodet5p-16b":
         model_class = AutoModelForSeq2SeqLM
         _kwargs |= {
             "low_cpu_mem_usage": True,
@@ -432,9 +422,9 @@ def get_huggingface_predictor(
     runtime: Runtime = Runtime.PYTORCH,
     allow_patch_model_forward: bool = False,
     prompt_trimmer: PromptTrimmer | None = None,
-) -> HuggingfacePredictor:
+) -> HuggingFacePredictor:
     """
-    Creates and returns a HuggingfacePredictor object configured with the specified parameters.
+    Creates and returns a HuggingFacePredictor object configured with the specified parameters.
 
     Parameters
     ----------
@@ -465,10 +455,10 @@ def get_huggingface_predictor(
     --------
     >>> predictor = get_huggingface_predictor(tokenizer, model, device=torch.device('cuda'))
     >>> type(predictor)
-    <class 'HuggingfacePredictor'>
+    <class 'HuggingFacePredictor'>
 
     """
-    return HuggingfacePredictor(
+    return HuggingFacePredictor(
         tokenizer,
         model,
         device=device,
@@ -487,8 +477,8 @@ def _initialize_hf_model(
     allow_patch_model_forward: bool = True,
     prompt_trimmer: PromptTrimmer = None,
     device: torch.device = None,
-    _kwargs: dict = {},
-) -> HuggingfacePredictor:
+    _kwargs: dict | None = None,
+) -> HuggingFacePredictor:
     """
     Initialize a Hugging Face model for prediction based on various configurations.
 
@@ -535,7 +525,6 @@ def _initialize_hf_model(
     -----
     * `_kwargs` can be modified within the function.
     * Function logs CUDA memory before and after model instantiation for PyTorch runtime.
-    * Function may warm up models for TensorRT runtime.
 
     Examples
     --------
@@ -543,6 +532,8 @@ def _initialize_hf_model(
     >>> predictor = _initialize_hf_model('Salesforce/codegen', AutoModelForSeq2SeqLM, config, runtime=Runtime.BETTER_TRANSFORMER)
 
     """
+    if _kwargs is None:
+        _kwargs = {}
     torch_device = _get_accelerator() if device is None else device
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -580,7 +571,7 @@ def _initialize_hf_model(
         _kwargs.pop("low_cpu_mem_usage", None)
         _kwargs.pop("device_map", None)
 
-        save_dir = f"{model_name.replace('/','_')}_optimized_cpu_o3"
+        save_dir = f"{model_name.replace('/', '_')}_optimized_cpu_o3"
 
         if not Path(save_dir).exists():
             model = get_ort_model(model_class).from_pretrained(
@@ -613,7 +604,7 @@ def _initialize_hf_model(
         _kwargs.pop("low_cpu_mem_usage", None)
         _kwargs.pop("device_map", None)
 
-        save_dir = f"{model_name.replace('/','_')}_optimized_gpu_o3"
+        save_dir = f"{model_name.replace('/', '_')}_optimized_gpu_o3"
 
         if not Path(save_dir).exists():
             model = get_ort_model(model_class).from_pretrained(
@@ -635,34 +626,6 @@ def _initialize_hf_model(
             save_dir,
             provider="CUDAExecutionProvider",
         )
-    elif runtime == Runtime.ORT_TENSORRT:
-        if torch_device.type != "cuda":
-            msg = "Cannot run model on CUDA without CUDA. Please specify device='cuda'."
-            raise ValueError(
-                msg,
-            )
-
-        provider_options = {
-            "trt_engine_cache_enable": True,
-            "trt_engine_cache_path": (
-                f"tmp/trt_cache_{model_name.replace('/','_')}_tensorrt"
-            ),
-        }
-
-        # TensorRT models do not support these flags
-        _kwargs.pop("low_cpu_mem_usage", None)
-        _kwargs.pop("device_map", None)
-
-        model = get_ort_model(model_class).from_pretrained(
-            pretrained_model_name_or_path=model_name,
-            config=model_config,
-            export=True,
-            provider="TensorrtExecutionProvider",
-            provider_options=provider_options,
-            session_options=session_options,
-            **_kwargs,
-        )
-        assert "TensorrtExecutionProvider" in model.providers
     elif runtime == Runtime.BETTER_TRANSFORMER:
         model = BetterTransformer.transform(
             model_class.from_pretrained(
@@ -684,10 +647,7 @@ def _initialize_hf_model(
             " cause unexpected behavior.",
         )
 
-    if runtime in {Runtime.PYTORCH, Runtime.BETTER_TRANSFORMER}:
-        model.to(torch_device)  # Ensure model is on device
-
-    predictor = get_huggingface_predictor(
+    return get_huggingface_predictor(
         tokenizer=tokenizer,
         model=model,
         device=torch_device,
@@ -695,52 +655,3 @@ def _initialize_hf_model(
         allow_patch_model_forward=allow_patch_model_forward,
         prompt_trimmer=prompt_trimmer,
     )
-
-    if runtime == Runtime.ORT_TENSORRT:
-        # Warm up TensorRT model once instantiated.
-        logging.info("Warmimg up TensorRT model.")
-        _warmup_model(predictor)
-        logging.info("Warmup successful.")
-
-    return predictor
-
-
-def _warmup_model(predictor: HuggingfacePredictor):
-    """
-    Warms up a given Huggingface predictor model by running predictions.
-    The purpose of this is primarily to build TensorRT kernels for various
-    input sizes, as otherwise they would be built on the fly, causing
-    significant delay.
-
-    Parameters
-    ----------
-    predictor : HuggingfacePredictor
-        Instance of a Huggingface predictor class.
-
-    Notes
-    -----
-    * Performs a small prediction using a single '!' as prompt.
-    * Verifies if token limit is respected by attempting a long token string.
-    * Both predictions are done with cache disabled, temperature at 0 and max_tokens set to 1.
-
-    Raises
-    ------
-    ValueError:
-        If token limit is not respected.
-
-    Examples
-    --------
-    >>> predictor = _initialize_hf_model('gpt-2', AutoModelForCausalLM, config)
-    >>> _warmup_model(predictor)
-
-    """
-    raise NotImplementedError("Model warmup is not support yet.")
-    small_prompt = LmPrompt("!", cache=False, temperature=0, max_tokens=1)
-    predictor.predict(small_prompt)
-
-    single_token = predictor.tokenize("Hello")[0]
-    long_prompt_str = single_token * (predictor.token_limit - 1)
-    if predictor.tokenize(long_prompt_str) != (predictor.token_limit - 1):
-        raise ValueError("Prompt too long.")
-    long_prompt = LmPrompt(long_prompt_str, cache=False, temperature=0, max_tokens=1)
-    predictor.predict(long_prompt)

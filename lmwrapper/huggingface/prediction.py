@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
 
@@ -5,11 +6,11 @@ from lmwrapper.structs import LmPrediction
 
 
 @dataclass
-class HuggingfacePrediction(LmPrediction):
+class HuggingFacePrediction(LmPrediction):
     _prompt_encoding: Any
     _tokens: Any
     _log_probs: Any
-    _logprobs_dict: dict
+    _logprobs_dict: list
     _num_prompt_tokens: int
     _completion_with_special_tok: str
 
@@ -35,8 +36,7 @@ class HuggingfacePrediction(LmPrediction):
         self._verify_logprobs()
         if self.prompt.echo:
             return self._log_probs[self._num_prompt_tokens :]
-        else:
-            return self._log_probs
+        return self._log_probs
 
     @property
     def prompt_tokens(self):
