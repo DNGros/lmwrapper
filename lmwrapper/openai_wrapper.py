@@ -9,7 +9,6 @@ from pathlib import Path
 import tiktoken
 from openai import OpenAI, RateLimitError
 from openai.types.completion_choice import Logprobs
-from openai.types.chat.chat_completion_token_logprob import TopLogprob
 
 from lmwrapper.abstract_predictor import LmPredictor
 from lmwrapper.secrets_manager import (
@@ -139,8 +138,8 @@ class OpenAiLmPrediction(LmPrediction):
             return self.metad.logprobs.top_logprobs
 
         top_logprobs = []
-        for p in self.metad.logprobs.content: # for each token
-            odict = dict([ (t.token,t.logprob) for t in p.top_logprobs ])
+        for p in self.metad.logprobs.content:  # for each token
+            odict = dict([(t.token, t.logprob) for t in p.top_logprobs])
             top_logprobs.append(odict)
         return top_logprobs
 
@@ -159,6 +158,7 @@ class OpenAIPredictor(LmPredictor):
         chat_mode: bool | None = None,
         cache_outputs_default: bool = False,
         retry_on_rate_limit: bool = False,
+        trim_stop_in_output: bool = False,
     ):
         for hook in self._instantiation_hooks:
             hook.before_init(
@@ -186,6 +186,7 @@ class OpenAIPredictor(LmPredictor):
             )
         self._token_limit = info.token_limit if info is not None else None
         self._tokenizer = None
+        self._trim_stop_in_output = trim_stop_in_output
 
     @classmethod
     def add_instantiation_hook(cls, hook: "OpenAiInstantiationHook"):
@@ -339,8 +340,16 @@ class OpenAIPredictor(LmPredictor):
 
         def get_completion_text(text):
             if not prompt.echo:
-                return text
-            return text[len(prompt.text) :]
+                text = text
+            else:
+                text = text[len(prompt.text) :]
+
+            if prompt.stop is not None and self._trim_stop_in_output:
+                for stop in sorted(prompt.stop, key=len, reverse=True):
+                    if stop in text:
+                        return text[: text.index(stop)]
+
+            return text
 
         def get_text_from_choice(choice):
             return choice.text if not self._chat_mode else choice.message.content
@@ -483,6 +492,51 @@ class OpenAiModelNames(metaclass=_ModelNamesMeta):
         return None
 
 
+class TogetherModelNames(metaclass=_ModelNamesMeta):
+    """
+    Enum for available Together models. Variable docstrings adapted from
+    documentation on Together's website at the time.
+    """
+
+    codellama_7b_python = OpenAiModelInfo(
+        "codellama/CodeLlama-7b-Python-hf",
+        False,
+        16384,
+    )
+    codellama_70b = OpenAiModelInfo("codellama/CodeLlama-70b-hf", False, 16384)
+    codellama_70b_instruct = OpenAiModelInfo(
+        "codellama/CodeLlama-70b-Instruct-hf",
+        True,
+        16384,
+    )
+    phind_codellama_34b = OpenAiModelInfo("Phind/Phind-CodeLlama-34B-v2", False, 16384)
+    deepseek_coder_33b_instruct = OpenAiModelInfo(
+        "deepseek-ai/deepseek-coder-33b-instruct",
+        True,
+        16384,
+    )
+    mistral_7b = OpenAiModelInfo("mistralai/Mistral-7B-v0.1", False, 32768)
+    mistral_7b_instruct = OpenAiModelInfo("mistralai/Mistral-7B-Instruct-v0.1", True, 32768)
+
+    @classmethod
+    def name_to_info(cls, name: str) -> OpenAiModelInfo | None:
+        if isinstance(name, OpenAiModelInfo):
+            return name
+        for info in cls:
+            if info == name:
+                return info
+        return None
+
+    @classmethod
+    def name_to_info(cls, name: str) -> OpenAiModelInfo | None:
+        if isinstance(name, OpenAiModelInfo):
+            return name
+        for info in cls:
+            if info == name:
+                return info
+        return None
+
+
 def get_open_ai_lm(
     model_name: str = OpenAiModelNames.gpt_3_5_turbo_instruct,
     api_key_secret: SecretInterface = None,
@@ -520,6 +574,48 @@ def get_open_ai_lm(
     client = OpenAI(
         api_key=api_key_secret.get_secret().strip(),
         organization=organization if organization is not None else None,
+    )
+
+    return OpenAIPredictor(
+        api=client,
+        engine_name=model_name,
+        cache_outputs_default=cache_outputs_default,
+        retry_on_rate_limit=retry_on_rate_limit,
+    )
+
+
+def get_together_lm(
+    model_name: str = TogetherModelNames.mistral_7b,
+    api_key_secret: SecretInterface = None,
+    organization: str | None = None,
+    cache_outputs_default: bool = False,
+    retry_on_rate_limit: bool = False,
+) -> OpenAIPredictor:
+    if api_key_secret is None:
+        api_key_secret = SecretEnvVar("TOGETHER_API_KEY")
+        if not api_key_secret.is_readable():
+            api_key_secret = SecretFile(Path("~/together_key.txt").expanduser())
+        if not api_key_secret.is_readable():
+            msg = (
+                "Cannot find an API key. By default the TOGETHER_API_KEY environment"
+                " variable is used if it is available. Otherwise it will read from a"
+                " file at ~/together_key.txt. Please place the key at one of the locations"
+                " or pass in a SecretInterface (like SecretEnvVar or SecretFile object)"
+                " to the api_key_secret argument.\nYou can get an API key from"
+                " https://api.together.xyz/settings/api-keys"
+            )
+            raise ValueError(
+                msg,
+            )
+    assert_is_a_secret(api_key_secret)
+
+    if not api_key_secret.is_readable():
+        msg = "API key is not defined"
+        raise ValueError(msg)
+
+    client = OpenAI(
+        base_url="https://api.together.xyz/v1",
+        api_key=api_key_secret.get_secret().strip(),
     )
 
     return OpenAIPredictor(

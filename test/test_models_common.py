@@ -4,10 +4,11 @@ import numpy as np
 import pytest
 
 from lmwrapper.huggingface_wrapper import get_huggingface_lm
-from lmwrapper.openai_wrapper import OpenAiModelNames, get_open_ai_lm
+from lmwrapper.openai_wrapper import OpenAiModelNames, TogetherModelNames, get_open_ai_lm
 from lmwrapper.structs import LmPrompt
 
 ALL_MODELS = [
+    get_open_ai_lm(TogetherModelNames.mistral_7b),
     get_open_ai_lm(OpenAiModelNames.gpt_3_5_turbo_instruct),
     get_huggingface_lm("gpt2"),
 ]
@@ -618,6 +619,57 @@ def test_simple_pred_serialize(lm):
 
     pprint(pred_dict)
 
+@pytest.mark.parametrize("lm", ALL_MODELS)
+def test_hello_world_prompt(lm):
+    hello_world_prompt = (
+        "def hello():\n"
+        '    """prints the string \'hello\'"""\n'
+        '    print("hello")\n'
+        "\n"
+        "def hello_world():\n"
+        '    """prints the string \'hello world\'"""\n'
+    )
+    resp = lm.predict(
+        LmPrompt(
+            hello_world_prompt,
+            max_tokens=10,
+            cache=False,
+            # stop=["\n"],
+            temperature=0,
+        ),
+    )
+    assert (
+        resp.completion_text.startswith("    print('hello world')")
+        or resp.completion_text.startswith('    print("hello world")'),
+    )
+
+    # A version using stop. Breaks because the tokenization is wrong.
+    resp = lm.predict(
+        LmPrompt(
+            hello_world_prompt,
+            max_tokens=10,
+            cache=False,
+            # stop=["\n"],
+            temperature=0,
+        ),
+    )
+    assert resp.completion_text in {
+        "    print('hello world')",
+        '    print("hello world")',
+    }
+    resp = lm.predict(
+        LmPrompt(
+            hello_world_prompt + "    print",
+            max_tokens=10,
+            cache=False,
+            # stop=["\n"],
+            temperature=0,
+        ),
+    )
+    assert resp.completion_text in {
+        "('hello world')",
+        '("hello world")',
+    }
 
 @pytest.mark.skip(reason="Huggingface does not support completion_token_offsets currently")
 @pytest.mark.parametrize("lm", ALL_MODELS)
@@ -647,7 +699,7 @@ def test_token_offsets(lm):
             max_tokens=3,
             cache=False,
             temperature=0,
-            logprobs=1,
+            logprobs=5,
         ),
     )
     assert pred.completion_text == " I J K"
