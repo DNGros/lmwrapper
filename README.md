@@ -1,3 +1,7 @@
+# MIGRATION NOTICE
+
+The new home for this repo is [https://github.com/DaiseyCode/lmwrapper](https://github.com/DaiseyCode/lmwrapper)
+
 # LmWrapper
 
 Provides a wrapper around OpenAI API and Hugging Face Language models, focusing
